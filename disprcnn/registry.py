@@ -1,4 +1,4 @@
-from nds.utils.registry import Registry
+from disprcnn.utils.registry import Registry
 
 BATCH_COLLATORS = Registry()
 LOSS_FUNCTIONS = Registry()

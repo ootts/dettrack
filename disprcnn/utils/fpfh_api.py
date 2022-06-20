@@ -1,8 +1,8 @@
 import numpy as np
 import open3d as o3d
 
-from nds.utils.utils_3d import transform_points
-from nds.utils.vis3d_ext import Vis3D
+from disprcnn.utils.utils_3d import transform_points
+from disprcnn.utils.vis3d_ext import Vis3D
 
 
 def preprocess_point_cloud(pcd, voxel_size):

@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 
-from nds.utils.kitti_utils import inverse_rigid_trans
+from disprcnn.utils.kitti_utils import inverse_rigid_trans
 
 
 class KITTICalib:

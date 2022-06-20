@@ -11,8 +11,8 @@ import tqdm
 from dl_ext.primitive import safe_zip
 from tqdm import trange
 
-from nds.utils.cv2_util import findContours
-from nds.utils.flow_viz import *
+from disprcnn.utils.cv2_util import findContours
+from disprcnn.utils.flow_viz import *
 
 
 def plot_confidence(confidence):

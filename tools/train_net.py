@@ -9,13 +9,13 @@ import numpy as np
 import torch
 import torch.multiprocessing
 
-from nds.config import cfg
-from nds.engine.defaults import default_argument_parser
-from nds.trainer.build import build_trainer
-from nds.utils.comm import synchronize, get_rank
-from nds.utils.logger import setup_logger
-from nds.utils.os_utils import archive_runs, make_source_code_snapshot, deterministic
-from nds.utils.vis3d_ext import Vis3D
+from disprcnn.config import cfg
+from disprcnn.engine.defaults import default_argument_parser
+from disprcnn.trainer.build import build_trainer
+from disprcnn.utils.comm import synchronize, get_rank
+from disprcnn.utils.logger import setup_logger
+from disprcnn.utils.os_utils import archive_runs, make_source_code_snapshot, deterministic
+from disprcnn.utils.vis3d_ext import Vis3D
 
 warnings.filterwarnings('once')
 os.environ['PYOPENGL_PLATFORM'] = 'egl'

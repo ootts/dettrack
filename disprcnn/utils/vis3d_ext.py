@@ -17,9 +17,9 @@ from scipy.spatial.transform import Rotation
 from transforms3d import euler, affines
 from vis3d.vis3d import tensor2ndarray
 
-from nds.utils.comm import get_rank
-from nds.utils.os_utils import magenta
-from nds.utils.pn_utils import random_choice, to_array, clone_if_present
+from disprcnn.utils.comm import get_rank
+from disprcnn.utils.os_utils import magenta
+from disprcnn.utils.pn_utils import random_choice, to_array, clone_if_present
 
 
 class Vis3D(vis3d.Vis3D):
@@ -413,7 +413,7 @@ class Vis3D(vis3d.Vis3D):
 
         if not self.enable:
             return
-        from nds.structures.deformation_graph import DeformationGraph
+        from disprcnn.structures.deformation_graph import DeformationGraph
         assert isinstance(graph, DeformationGraph)
         graph = graph.numpy()
         edges = np.stack([np.repeat(np.arange(graph.graph_edges.shape[0])[:, None], 8, 1),
@@ -454,7 +454,7 @@ class Vis3D(vis3d.Vis3D):
         self.add_image(depth, name=name)
 
     def add_plt(self, x, name=None, **kwargs):
-        from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+        from matplotlib.backedisprcnn.backend_agg import FigureCanvasAgg as FigureCanvas
         from matplotlib.figure import Figure
         fig = Figure()
         canvas = FigureCanvas(fig)
@@ -485,7 +485,7 @@ class Vis3D(vis3d.Vis3D):
         :param flow: h,w,2
         :return:
         """
-        from nds.utils.flow_viz import flow_to_image
+        from disprcnn.utils.flow_viz import flow_to_image
         flow_img = flow_to_image(flow)
         self.add_image(flow_img, name=name)
 

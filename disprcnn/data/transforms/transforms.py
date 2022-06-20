@@ -7,7 +7,7 @@ from dl_ext.primitive import safe_zip
 from dl_ext.timer import EvalTime
 from torchvision.transforms import functional as F
 
-from nds.utils.pn_utils import stack
+from disprcnn.utils.pn_utils import stack
 
 
 class Compose(object):
@@ -282,7 +282,7 @@ class SpvcnnVoxelization(object):
             raise NotImplementedError()
 
     def voxelize_one_sample(self, sample, voxel_size, i):
-        from nds.utils.ts_utils import pad_batch_idx, remove_batch_idx
+        from disprcnn.utils.ts_utils import pad_batch_idx, remove_batch_idx
 
         if 'point_tensors' in sample and 'sparse_tensors' in sample and len(sample['point_tensors']) > i and len(
                 sample['sparse_tensors']) > i:

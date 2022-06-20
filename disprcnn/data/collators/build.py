@@ -1,4 +1,4 @@
-from nds.registry import BATCH_COLLATORS
+from disprcnn.registry import BATCH_COLLATORS
 from .default_batch_collator import DefaultBatchCollator
 from .extended_batch_collator import ExtendedBatchCollator
 # from .sp_collate import SparseBatchCollator, PaddedSparseBatchCollator, ExtendBatchCollator

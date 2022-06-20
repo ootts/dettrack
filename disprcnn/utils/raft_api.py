@@ -11,12 +11,12 @@ from tqdm import tqdm, trange
 import shutil
 
 # from monotrack.data.datasets.raw_loader import KITTIRawLoader
-from nds.modeling.models.raft.raft import RAFT
-from nds.utils.flow_warping import FlowWarping
+from disprcnn.modeling.models.raft.raft import RAFT
+from disprcnn.utils.flow_warping import FlowWarping
 
 
-# from nds.utils.paths import KITTIROOT
-# from nds.utils.primitive import safe_zip
+# from disprcnn.utils.paths import KITTIROOT
+# from disprcnn.utils.primitive import safe_zip
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 

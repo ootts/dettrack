@@ -6,19 +6,19 @@ import csv
 import sys
 
 import torch
-from nds.config import cfg
+from disprcnn.config import cfg
 
-from nds.engine.defaults import default_argument_parser
-from nds.evaluators import build_evaluators
-from nds.trainer.build import build_trainer
-from nds.utils.comm import synchronize, get_rank, get_world_size
+from disprcnn.engine.defaults import default_argument_parser
+from disprcnn.evaluators import build_evaluators
+from disprcnn.trainer.build import build_trainer
+from disprcnn.utils.comm import synchronize, get_rank, get_world_size
 import torch.multiprocessing
 
 # torch.multiprocessing.set_sharing_strategy('file_system')
-from nds.utils.logger import setup_logger
-from nds.utils.os_utils import isckpt
-from nds.utils.vis3d_ext import Vis3D
-from nds.visualizers import build_visualizer
+from disprcnn.utils.logger import setup_logger
+from disprcnn.utils.os_utils import isckpt
+from disprcnn.utils.vis3d_ext import Vis3D
+from disprcnn.visualizers import build_visualizer
 
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 

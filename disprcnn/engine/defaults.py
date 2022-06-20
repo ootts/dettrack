@@ -2,9 +2,9 @@ import os
 import argparse
 import sys
 
-from nds.utils.comm import get_rank, get_world_size
-from nds.utils.logger import setup_logger
-from nds.utils.miscellaneous import save_config
+from disprcnn.utils.comm import get_rank, get_world_size
+from disprcnn.utils.logger import setup_logger
+from disprcnn.utils.miscellaneous import save_config
 
 
 def default_argument_parser(add_help=True):
@@ -52,7 +52,7 @@ def setup(args, freeze=True):
     """
     Create configs and perform basic setups.
     """
-    from nds.config import cfg
+    from disprcnn.config import cfg
     cfg = cfg.clone()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)

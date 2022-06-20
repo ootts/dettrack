@@ -2,8 +2,8 @@ import cv2
 import copy
 import torch
 import numpy as np
-from nds.modeling.layers.misc import interpolate
-from nds.utils import cv2_util
+from disprcnn.modeling.layers.misc import interpolate
+from disprcnn.utils import cv2_util
 import pycocotools.mask as mask_utils
 from warnings import warn
 import torch.nn.functional as F

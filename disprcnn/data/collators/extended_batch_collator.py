@@ -10,8 +10,8 @@ def extended_collate(batch):
 
     elem = batch[0]
     elem_type = type(elem)
-    from nds.structures.bounding_box_3d import Box3DList
-    from nds.structures.generic_bounding_box_3d import GeBox3DList
+    from disprcnn.structures.bounding_box_3d import Box3DList
+    from disprcnn.structures.generic_bounding_box_3d import GeBox3DList
     if isinstance(elem, torch.Tensor):
         out = None
         if torch.utils.data.get_worker_info() is not None:

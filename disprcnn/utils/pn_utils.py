@@ -5,8 +5,8 @@ import torch
 import trimesh
 from trimesh.caching import TrackedArray
 
-from nds.structures.safe_dict import SafeDict
-from nds.utils.os_utils import NotCheckedError
+from disprcnn.structures.safe_dict import SafeDict
+from disprcnn.utils.os_utils import NotCheckedError
 
 
 def norm(x, dim=None, keepdims=False):

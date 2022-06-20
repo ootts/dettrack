@@ -6,7 +6,7 @@ from typing import Optional, Any
 from dl_ext.timer import EvalTime
 from torch import Tensor
 from torch.nn.modules.batchnorm import _BatchNorm
-# from nds.modeling.functions.syncbatchnorm import SyncBatchNorm as sync_batch_norm
+# from disprcnn.modeling.functions.syncbatchnorm import SyncBatchNorm as sync_batch_norm
 from torch.nn.modules._functions import SyncBatchNorm as sync_batch_norm
 
 

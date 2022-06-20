@@ -13,7 +13,7 @@ import torch
 import torch.distributed as dist
 from termcolor import colored
 
-from nds.utils.os_utils import magenta, cyan, red
+from disprcnn.utils.os_utils import magenta, cyan, red
 
 _LOCAL_PROCESS_GROUP = None
 """

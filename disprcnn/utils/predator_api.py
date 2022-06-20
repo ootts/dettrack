@@ -12,19 +12,19 @@ from tqdm import trange
 from easydict import EasyDict as edict
 
 # from datasets.dataloader import get_dataloader
-from nds.data.datasets.indoor import IndoorDataset, get_dataloader
-# from nds.modeling.models.predator.lib.benchmark_utils import ransac_pose_estimation
-from nds.modeling.models.predator.lib.benchmark_utils import to_o3d_pcd, to_o3d_feats
-from nds.modeling.models.predator.lib.utils import load_obj, setup_seed, load_config
+from disprcnn.data.datasets.indoor import IndoorDataset, get_dataloader
+# from disprcnn.modeling.models.predator.lib.benchmark_utils import ransac_pose_estimation
+from disprcnn.modeling.models.predator.lib.benchmark_utils import to_o3d_pcd, to_o3d_feats
+from disprcnn.modeling.models.predator.lib.utils import load_obj, setup_seed, load_config
 
-from nds.utils.cam_utils import cam_fufvcucv_to_matrix
-from nds.utils.pn_utils import to_array, random_choice
-from nds.utils.tsdf_fusion_python import TSDFVolume
-from nds.utils.utils_3d import transform_points, depth_to_rect
-from nds.utils.vis3d_ext import Vis3D
+from disprcnn.utils.cam_utils import cam_fufvcucv_to_matrix
+from disprcnn.utils.pn_utils import to_array, random_choice
+from disprcnn.utils.tsdf_fusion_python import TSDFVolume
+from disprcnn.utils.utils_3d import transform_points, depth_to_rect
+from disprcnn.utils.vis3d_ext import Vis3D
 
-from nds.modeling.models.predator.lib.utils import load_config
-from nds.modeling.models.predator.architectures import KPFCNN
+from disprcnn.modeling.models.predator.lib.utils import load_config
+from disprcnn.modeling.models.predator.architectures import KPFCNN
 
 
 def ransac_pose_estimation(src_pcd, tgt_pcd, src_feat, tgt_feat, mutual=False, distance_threshold=0.05, ransac_n=3):

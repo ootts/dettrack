@@ -122,8 +122,8 @@ class ProposalTargetLayer(nn.Module):
             hard_bg_inds = torch.nonzero((max_overlaps < self.cfg.RCNN.CLS_BG_THRESH) &
                                          (max_overlaps >= self.cfg.RCNN.CLS_BG_THRESH_LO)).view(-1)
 
-            fg_num_rois = fg_inds.numel()
-            bg_num_rois = hard_bg_inds.numel() + easy_bg_inds.numel()
+            fg_num_rois = fg_idisprcnn.numel()
+            bg_num_rois = hard_bg_idisprcnn.numel() + easy_bg_idisprcnn.numel()
 
             if fg_num_rois > 0 and bg_num_rois > 0:
                 # sampling fg
@@ -188,28 +188,28 @@ class ProposalTargetLayer(nn.Module):
         return batch_rois, batch_gt_of_rois, batch_roi_iou
 
     def sample_bg_inds(self, hard_bg_inds, easy_bg_inds, bg_rois_per_this_image):
-        if hard_bg_inds.numel() > 0 and easy_bg_inds.numel() > 0:
+        if hard_bg_idisprcnn.numel() > 0 and easy_bg_idisprcnn.numel() > 0:
             hard_bg_rois_num = int(bg_rois_per_this_image * self.cfg.RCNN.HARD_BG_RATIO)
             easy_bg_rois_num = bg_rois_per_this_image - hard_bg_rois_num
 
             # sampling hard bg
-            rand_idx = torch.randint(low=0, high=hard_bg_inds.numel(), size=(hard_bg_rois_num,)).long()
+            rand_idx = torch.randint(low=0, high=hard_bg_idisprcnn.numel(), size=(hard_bg_rois_num,)).long()
             hard_bg_inds = hard_bg_inds[rand_idx]
 
             # sampling easy bg
-            rand_idx = torch.randint(low=0, high=easy_bg_inds.numel(), size=(easy_bg_rois_num,)).long()
+            rand_idx = torch.randint(low=0, high=easy_bg_idisprcnn.numel(), size=(easy_bg_rois_num,)).long()
             easy_bg_inds = easy_bg_inds[rand_idx]
 
             bg_inds = torch.cat([hard_bg_inds, easy_bg_inds], dim=0)
-        elif hard_bg_inds.numel() > 0 and easy_bg_inds.numel() == 0:
+        elif hard_bg_idisprcnn.numel() > 0 and easy_bg_idisprcnn.numel() == 0:
             hard_bg_rois_num = bg_rois_per_this_image
             # sampling hard bg
-            rand_idx = torch.randint(low=0, high=hard_bg_inds.numel(), size=(hard_bg_rois_num,)).long()
+            rand_idx = torch.randint(low=0, high=hard_bg_idisprcnn.numel(), size=(hard_bg_rois_num,)).long()
             bg_inds = hard_bg_inds[rand_idx]
-        elif hard_bg_inds.numel() == 0 and easy_bg_inds.numel() > 0:
+        elif hard_bg_idisprcnn.numel() == 0 and easy_bg_idisprcnn.numel() > 0:
             easy_bg_rois_num = bg_rois_per_this_image
             # sampling easy bg
-            rand_idx = torch.randint(low=0, high=easy_bg_inds.numel(), size=(easy_bg_rois_num,)).long()
+            rand_idx = torch.randint(low=0, high=easy_bg_idisprcnn.numel(), size=(easy_bg_rois_num,)).long()
             bg_inds = easy_bg_inds[rand_idx]
         else:
             raise NotImplementedError

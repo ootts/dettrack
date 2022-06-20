@@ -2,7 +2,7 @@ import loguru
 import warnings
 from easydict import EasyDict
 
-from nds.utils.os_utils import red
+from disprcnn.utils.os_utils import red
 
 safe_level = 1  # 1 warn 2 error
 

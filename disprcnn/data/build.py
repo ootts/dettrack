@@ -2,7 +2,7 @@ import torch.utils.data
 from loguru import logger
 from torch.utils.data.dataset import ConcatDataset
 
-from nds.utils.imports import import_file
+from disprcnn.utils.imports import import_file
 from . import datasets as D
 from .collators.build import make_batch_collator
 from .transforms import build_transforms
@@ -38,7 +38,7 @@ def make_data_loader(cfg, is_train=True):
         shuffle = False
 
     paths_catalog = import_file(
-        "nds.config.paths_catalog", cfg.paths_catalog, True
+        "disprcnn.config.paths_catalog", cfg.paths_catalog, True
     )
     DatasetCatalog = paths_catalog.DatasetCatalog
     dataset_list = cfg.datasets.train if is_train else cfg.datasets.test

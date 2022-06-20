@@ -4,9 +4,9 @@ import torch
 import trimesh
 from skimage import measure
 
-from nds.utils.os_utils import red
-from nds.utils.pn_utils import random_choice, to_array
-from nds.utils.vis3d_ext import Vis3D
+from disprcnn.utils.os_utils import red
+from disprcnn.utils.pn_utils import random_choice, to_array
+from disprcnn.utils.vis3d_ext import Vis3D
 
 # Copyright (c) 2018 Andy Zeng
 
@@ -35,7 +35,7 @@ class TSDFVolume:
           voxel_size (float): The volume discretization in meters.
         """
         vol_bnds = np.asarray(vol_bnds)
-        assert vol_bnds.shape == (3, 2), "[!] `vol_bnds` should be of shape (3, 2)."
+        assert vol_bdisprcnn.shape == (3, 2), "[!] `vol_bnds` should be of shape (3, 2)."
 
         # Define voxel volume parameters
         self._vol_bnds = vol_bnds

@@ -7,9 +7,9 @@ import tqdm
 from dl_ext.primitive import safe_zip
 from pytorch3d.transforms import se3_log_map
 
-from nds.metric.accuracy import accuracy
-from nds.registry import EVALUATORS
-from nds.utils import comm
+from disprcnn.metric.accuracy import accuracy
+from disprcnn.registry import EVALUATORS
+from disprcnn.utils import comm
 
 
 @EVALUATORS.register('star_pose_eval')

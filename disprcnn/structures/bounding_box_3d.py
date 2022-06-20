@@ -1,9 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
-from nds.structures.point_cloud import PointCloud
+from disprcnn.structures.point_cloud import PointCloud
 import numpy as np
 
-# from nds.utils.eval_time import EvalTime
+# from disprcnn.utils.eval_time import EvalTime
 
 # get_time = EvalTime()
 # transpose
@@ -390,7 +390,7 @@ class Box3DList(object):
         @param pointcloud: nx3
         @return: bool tensor with shape (n, )
         """
-        from nds.utils.utils_3d import filter_bbox_3d
+        from disprcnn.utils.utils_3d import filter_bbox_3d
         assert pointcloud.shape[1] == 3
         if not isinstance(pointcloud, torch.Tensor):
             pointcloud = torch.tensor(pointcloud).float()

@@ -23,17 +23,17 @@ from torch.nn.utils import clip_grad_norm_, clip_grad_value_
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
-from nds.data import make_data_loader
-from nds.data.samplers.ordered_distributed_sampler import OrderedDistributedSampler
-# from nds.loss.build import build_loss_function
-from nds.metric.build import build_metric_functions
-from nds.modeling.build import build_model
-from nds.modeling.layers.ddp import DistributedDataParallel as EDDP
-from nds.modeling.layers.norm.syncbatchnorm import SyncBatchNorm as ESBN
-from nds.solver.build import make_optimizer, make_lr_scheduler
-from nds.trainer.utils import *
-from nds.utils.os_utils import red
-from nds.utils.tb_utils import get_summary_writer
+from disprcnn.data import make_data_loader
+from disprcnn.data.samplers.ordered_distributed_sampler import OrderedDistributedSampler
+# from disprcnn.loss.build import build_loss_function
+from disprcnn.metric.build import build_metric_functions
+from disprcnn.modeling.build import build_model
+from disprcnn.modeling.layers.ddp import DistributedDataParallel as EDDP
+from disprcnn.modeling.layers.norm.syncbatchnorm import SyncBatchNorm as ESBN
+from disprcnn.solver.build import make_optimizer, make_lr_scheduler
+from disprcnn.trainer.utils import *
+from disprcnn.utils.os_utils import red
+from disprcnn.utils.tb_utils import get_summary_writer
 
 
 class BaseTrainer:
@@ -380,7 +380,7 @@ class BaseTrainer:
         elif self.cfg.solver.dist.sampler.type == 'dlext' and dist_sampler_shuffle is False:
             train_sampler = OrderedDistributedSampler(self.train_dl.dataset)
         elif dist_sampler_type == 'neucon':
-            from nds.data.samplers.neucon_sampler import DistributedSampler as NeuConSampler
+            from disprcnn.data.samplers.neucon_sampler import DistributedSampler as NeuConSampler
             train_sampler = NeuConSampler(self.train_dl.dataset, shuffle=dist_sampler_shuffle)
         else:
             raise RuntimeError()

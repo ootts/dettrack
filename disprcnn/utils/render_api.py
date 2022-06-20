@@ -23,7 +23,7 @@ from pytorch3d.renderer.mesh.renderer import MeshRendererWithFragments
 from pytorch3d.structures import Meshes
 from tqdm import trange
 
-from nds.utils.pn_utils import min_max, ptp, to_array
+from disprcnn.utils.pn_utils import min_max, ptp, to_array
 
 # os.system('mkdir -p data/cow_mesh')
 # os.system('wget -P data/cow_mesh https://dl.fbaipublicfiles.com/pytorch3d/data/cow_mesh/cow.obj')
@@ -46,7 +46,7 @@ from nds.utils.pn_utils import min_max, ptp, to_array
 # A renderer in PyTorch3D is composed of a **rasterizer** and a **shader** which each have a number of subcomponents such as a **camera** (orthographic/perspective). Here we initialize some of these components and use default values for the rest.
 #
 # In this example we will first create a **renderer** which uses a **perspective camera**, a **point light** and applies **Phong shading**. Then we learn how to vary different components using the modular API.
-from nds.utils.utils_3d import canonical_to_camera_np, world_coordinate_to_camera_coordinate, matrix_3x4_to_4x4, rotx, \
+from disprcnn.utils.utils_3d import canonical_to_camera_np, world_coordinate_to_camera_coordinate, matrix_3x4_to_4x4, rotx, \
     roty_np, rotx_np, create_center_radius, canonical_to_camera, transform_points
 
 

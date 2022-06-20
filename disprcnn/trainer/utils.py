@@ -2,7 +2,7 @@ from enum import IntEnum
 
 import torch
 
-from nds.structures.safe_dict import SafeDict
+from disprcnn.structures.safe_dict import SafeDict
 
 
 def to_cuda(x):

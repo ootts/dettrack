@@ -1,18 +1,18 @@
-from nds.registry import TRAINERS
-from nds.trainer.barf import BaRFTrainer
-from nds.trainer.base import BaseTrainer
-from nds.trainer.depthfusion import DepthFusionTrainer
-from nds.trainer.depthfusion_onetime import DepthFusionOTTrainer
-from nds.trainer.nerf import NeRFTrainer
-from nds.trainer.nsg_trainer import NsgTrainer
-from nds.trainer.slot_attn import SlotAttnTrainer
-from nds.trainer.star import STaRTrainer
-from nds.trainer.savi import SaviTrainer
-from nds.trainer.starmo import STaRMoTrainer
-from nds.trainer.starsdf import STaRSdfTrainer
-from nds.trainer.starsdfmouni import STaRSdfMoUniTrainer
-from nds.trainer.volsdf import VolSDFTrainer
-from nds.trainer.surface import SurfaceTrainer
+from disprcnn.registry import TRAINERS
+from disprcnn.trainer.barf import BaRFTrainer
+from disprcnn.trainer.base import BaseTrainer
+from disprcnn.trainer.depthfusion import DepthFusionTrainer
+from disprcnn.trainer.depthfusion_onetime import DepthFusionOTTrainer
+from disprcnn.trainer.nerf import NeRFTrainer
+from disprcnn.trainer.nsg_trainer import NsgTrainer
+from disprcnn.trainer.slot_attn import SlotAttnTrainer
+from disprcnn.trainer.star import STaRTrainer
+from disprcnn.trainer.savi import SaviTrainer
+from disprcnn.trainer.starmo import STaRMoTrainer
+from disprcnn.trainer.starsdf import STaRSdfTrainer
+from disprcnn.trainer.starsdfmouni import STaRSdfMoUniTrainer
+from disprcnn.trainer.volsdf import VolSDFTrainer
+from disprcnn.trainer.surface import SurfaceTrainer
 
 
 @TRAINERS.register('base')

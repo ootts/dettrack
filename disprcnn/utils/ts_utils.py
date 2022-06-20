@@ -19,7 +19,7 @@ else:
     from torchsparse.tensor import SparseTensor, PointTensor
 
 from dl_ext.timer import EvalTime
-from nds.utils.pn_utils import norm, to_array, clone, intersect1d_pytorch
+from disprcnn.utils.pn_utils import norm, to_array, clone, intersect1d_pytorch
 
 
 # x: SparseTensor, z: PointTensor

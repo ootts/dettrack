@@ -4,8 +4,8 @@ from dl_ext.pytorch_ext import OneCycleScheduler
 from torch.optim import SGD, Adam
 from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 
-from nds.modeling.models.star.core import STaR
-# from nds.modeling.models.nds.nds import NdsWarpper
+from disprcnn.modeling.models.star.core import STaR
+# from disprcnn.modeling.models.disprcnn.nds import NdsWarpper
 from .lr_scheduler import WarmupMultiStepLR, WarmupCosineLR, ExponentialScheduler, WarmupExponentialScheduler
 from ..modeling.models.barf.barf import BaRF
 from ..modeling.models.star_sdf.star_sdf import STaRSdf

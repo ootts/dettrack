@@ -67,7 +67,7 @@ class Box3DPointRCNNPostProcess(object):
         results = []
         for k in range(batch_size):
             cur_inds = inds[k].view(-1)
-            if cur_inds.sum() == 0:
+            if cur_idisprcnn.sum() == 0:
                 # print('Low scores, random result.')
                 use_rpn_proposals = True
                 if not use_rpn_proposals:

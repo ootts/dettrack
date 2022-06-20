@@ -59,7 +59,7 @@ class NotCheckedError(RuntimeError):
 
 
 def archive_runs(output_dir):
-    from nds.utils.comm import get_rank, synchronize
+    from disprcnn.utils.comm import get_rank, synchronize
     if get_rank() == 0:
         timestamp_file = osp.join(output_dir, 'timestamp.txt')
         if osp.exists(timestamp_file):

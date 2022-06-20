@@ -3,14 +3,14 @@ import os
 
 import torch
 
-from nds.config import cfg
-from nds.engine.defaults import default_argument_parser, default_setup
-from nds.engine.launch import launch
-from nds.evaluators import build_evaluators
-from nds.trainer.build import build_trainer
-from nds.utils.comm import get_world_size, get_rank
-from nds.utils.os_utils import isckpt
-from nds.visualizers import build_visualizer
+from disprcnn.config import cfg
+from disprcnn.engine.defaults import default_argument_parser, default_setup
+from disprcnn.engine.launch import launch
+from disprcnn.evaluators import build_evaluators
+from disprcnn.trainer.build import build_trainer
+from disprcnn.utils.comm import get_world_size, get_rank
+from disprcnn.utils.os_utils import isckpt
+from disprcnn.visualizers import build_visualizer
 
 
 def setup(args):

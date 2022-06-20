@@ -13,11 +13,11 @@ from dl_ext.timer import EvalTime
 from easydict import EasyDict
 from tqdm import tqdm
 
-from nds.modeling.models.raft3d.raft3d import RAFT3D
-import nds.modeling.models.raft3d.projective_ops as pops
-from nds.utils.flow_utils import read_gen
-from nds.utils.utils_3d import depth_to_rect
-from nds.utils.vis3d_ext import Vis3D
+from disprcnn.modeling.models.raft3d.raft3d import RAFT3D
+import disprcnn.modeling.models.raft3d.projective_ops as pops
+from disprcnn.utils.flow_utils import read_gen
+from disprcnn.utils.utils_3d import depth_to_rect
+from disprcnn.utils.vis3d_ext import Vis3D
 
 
 class RAFT3DAPI:

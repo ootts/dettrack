@@ -1,9 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
-from nds.structures.point_cloud import PointCloud
+from disprcnn.structures.point_cloud import PointCloud
 import numpy as np
 
-# from nds.utils.eval_time import EvalTime
+# from disprcnn.utils.eval_time import EvalTime
 
 # get_time = EvalTime()
 # transpose

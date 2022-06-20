@@ -14,10 +14,10 @@ from multipledispatch import dispatch
 from packaging import version
 from scipy.spatial.distance import cdist
 
-from nds.utils.pn_utils import padded_stack, to_tensor, to_array
-from nds.utils.tsdf_fusion_python import get_view_frustum, TSDFVolume
-from nds.utils.utils_2d import bilinear_sampler
-from nds.utils.vis3d_ext import Vis3D
+from disprcnn.utils.pn_utils import padded_stack, to_tensor, to_array
+from disprcnn.utils.tsdf_fusion_python import get_view_frustum, TSDFVolume
+from disprcnn.utils.utils_2d import bilinear_sampler
+from disprcnn.utils.vis3d_ext import Vis3D
 
 
 # from pcdet.ops.pointnet2.pointnet2_batch.pointnet2_utils import ball_query as ball_query_pointnet2
@@ -1771,7 +1771,7 @@ def project_to_img(pts_cam, K, shape):
 
 def chamfer_distance(pts0, pts1, color0=None, color1=None, use_gpu=True):
     if use_gpu:
-        from nds.utils.chamfer3D import dist_chamfer_3D
+        from disprcnn.utils.chamfer3D import dist_chamfer_3D
         chamLoss = dist_chamfer_3D.chamfer_3DDist()
         points1 = to_tensor(pts0).cuda().float()[None]
         points2 = to_tensor(pts1).cuda().float()[None]

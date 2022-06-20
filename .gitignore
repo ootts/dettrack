@@ -1,0 +1,7 @@
+./models/
+#*egg-info
+dbg/
+./data/
+.idea
+#.vscode
+tmp

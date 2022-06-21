@@ -1,0 +1,85 @@
+model:
+  meta_architecture: "Yolact"
+#  yolact:
+#    ??
+datasets:
+  train: ("coco2017_train",)
+  test: "coco2017_val"
+#dataset:
+#  coco:
+#    pass??
+solver:
+  trainer: base
+  batch_size: 8
+  max_lr: 0.001
+  num_epochs: 55
+  optimizer: SGD
+  scheduler: WarmupMultiStepLR
+  warmup_iters: 500
+  steps: [ 280000, 600000, 700000, 750000 ]
+  bias_lr_factor: 1
+  weight_decay: 0.0005
+  weight_decay_bias: 0.0005
+  save_every: True
+  save_mode: iteration
+  save_freq: 10000
+  dist:
+    sampler:
+      shuffle: True
+input:
+  shuffle: True
+  transforms:
+    - name: ConvertFromInts
+    - name: ToAbsoluteCoords
+    - name: PhotometricDistort
+    - name: Expand
+      mean: [ 103.94, 116.78, 123.68 ]
+    - name: RandomSampleCrop
+    - name: RandomMirror
+    - name: Resize
+      max_size: 550
+      preserve_aspect_ratio: False
+      discard_box_width: 0.007272727272727273
+      discard_box_height: 0.007272727272727273
+      resize_gt: True
+    - name: Pad
+      width: 550
+      height: 550
+      mean: [ 103.94, 116.78, 123.68 ]
+    - name: ToPercentCoords
+    - name: PrepareMasks
+      mask_size: 16
+      use_gt_bboxes: False
+    - name: BackboneTransform
+      normalize: True
+      mean: [ 103.94, 116.78, 123.68 ]
+      std: [ 57.38, 57.12, 58.40 ]
+      subtract_means: False
+      to_float: False
+      in_channel_order: 'BGR'
+      channel_order: 'RGB'
+  transforms_test:
+    - name: ConvertFromInts
+    - name: Resize
+      max_size: 550
+      preserve_aspect_ratio: False
+      discard_box_width: 0.007272727272727273
+      discard_box_height: 0.007272727272727273
+      resize_gt: False
+    - name: BackboneTransform
+      normalize: True
+      mean: [ 103.94, 116.78, 123.68 ]
+      std: [ 57.38, 57.12, 58.40 ]
+      subtract_means: False
+      to_float: False
+      in_channel_order: 'BGR'
+      channel_order: 'RGB'
+
+test:
+  do_visualization: True
+  visualizer: ??
+  evaluators: [ '??' ]
+
+dataloader:
+  collator: DetectionBatchCollator
+  num_workers: 4

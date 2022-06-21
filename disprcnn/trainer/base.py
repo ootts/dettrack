@@ -26,11 +26,12 @@ from tqdm import tqdm
 from disprcnn.data import make_data_loader
 from disprcnn.data.samplers.ordered_distributed_sampler import OrderedDistributedSampler
 # from disprcnn.loss.build import build_loss_function
-from disprcnn.metric.build import build_metric_functions
+# from disprcnn.metric.build import build_metric_functions
 from disprcnn.modeling.build import build_model
 from disprcnn.modeling.layers.ddp import DistributedDataParallel as EDDP
 from disprcnn.modeling.layers.norm.syncbatchnorm import SyncBatchNorm as ESBN
 from disprcnn.solver.build import make_optimizer, make_lr_scheduler
+from disprcnn.solver.lr_scheduler import WarmupMultiStepLR
 from disprcnn.trainer.utils import *
 from disprcnn.utils.os_utils import red
 from disprcnn.utils.tb_utils import get_summary_writer
@@ -59,7 +60,7 @@ class BaseTrainer:
         self.optimizer = make_optimizer(cfg, self.model)
         self.scheduler = make_lr_scheduler(cfg, self.optimizer,
                                            cfg.solver.num_epochs * len(self.train_dl))
-        self.metric_functions = build_metric_functions(cfg)
+        # self.metric_functions = build_metric_functions(cfg)
         self.epoch_time_am = AverageMeter()
         self.cfg = cfg
         self._tb_writer = None
@@ -73,8 +74,9 @@ class BaseTrainer:
     def train(self, epoch):
         loss_meter = AverageMeter()
         metric_ams = {}
-        for metric in self.metric_functions.keys():
-            metric_ams[metric] = AverageMeter()
+        loss_ams = {}
+        # for metric in self.metric_functions.keys():
+        #     metric_ams[metric] = AverageMeter()
         self.model.train()
         bar = tqdm(self.train_dl, leave=False) if is_main_process() else self.train_dl
         begin = time.time()
@@ -91,7 +93,7 @@ class BaseTrainer:
                 else:
                     clip_grad_value_(self.model.parameters(), self.cfg.solver.grad_clip)
             self.optimizer.step()
-            if self.scheduler is not None and isinstance(self.scheduler, OneCycleScheduler):
+            if self.scheduler is not None and isinstance(self.scheduler, (OneCycleScheduler, WarmupMultiStepLR)):
                 self.scheduler.step()
             # record and plot loss and metrics
             reduced_loss = reduce_loss(loss)
@@ -100,6 +102,10 @@ class BaseTrainer:
                 for k, v in output['metrics'].items():
                     reduced_s = reduce_loss(v)
                     metrics[k] = reduced_s
+            for k, v in loss_dict.items():
+                if k not in loss_ams.keys():
+                    loss_ams[k] = AverageMeter()
+                loss_ams[k].update(v.item())
             if is_main_process():
                 loss_meter.update(reduced_loss.item())
                 lr = self.optimizer.param_groups[0]['lr']
@@ -107,12 +113,14 @@ class BaseTrainer:
                 self.tb_writer.add_scalar('train/lr', lr, self.global_steps)
                 for k, v in loss_dict.items():
                     self.tb_writer.add_scalar(f'train/loss/{k}', v.item(), self.global_steps)
+                    self.tb_writer.add_scalar(f'train/loss/smooth_{k}', loss_ams[k].avg, self.global_steps)
                 bar_vals = {'epoch': epoch, 'phase': 'train', 'loss': loss_meter.avg}
                 for k, v in metrics.items():
                     if k not in metric_ams.keys():
                         metric_ams[k] = AverageMeter()
                     metric_ams[k].update(v.item())
                     self.tb_writer.add_scalar(f'train/{k}', v.item(), self.global_steps)
+                    self.tb_writer.add_scalar(f'train/smooth_{k}', metric_ams[k].avg, self.global_steps)
                     bar_vals[k] = metric_ams[k].avg
                 bar.set_postfix(bar_vals)
             self.global_steps += 1
@@ -127,22 +135,22 @@ class BaseTrainer:
                 metric_msgs.append('%s %.4f' % (metric, v.avg))
             s = ', '.join(metric_msgs)
             logger.info(s)
-        if self.scheduler is not None and not isinstance(self.scheduler, OneCycleScheduler):
+        if self.scheduler is not None and not isinstance(self.scheduler, (OneCycleScheduler, WarmupMultiStepLR)):
             self.scheduler.step()
 
     @torch.no_grad()
     def val(self, epoch):
         loss_meter = AverageMeter()
         metric_ams = {}
-        for metric in self.metric_functions.keys():
-            metric_ams[metric] = AverageMeter()
+        # for metric in self.metric_functions.keys():
+        #     metric_ams[metric] = AverageMeter()
         self.model.eval()
         bar = tqdm(self.valid_dl, leave=False) if is_main_process() else self.valid_dl
         begin = time.time()
         for batch in bar:
             batch = to_cuda(batch)
             batch['global_step'] = self.global_steps
-            output,loss_dict = self.model(batch)
+            output, loss_dict = self.model(batch)
             loss = sum(v for k, v in loss_dict.items())
             reduced_loss = reduce_loss(loss)
             metrics = {}

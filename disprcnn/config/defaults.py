@@ -5,21 +5,125 @@ _C = CN()
 
 _C.model = CN()
 _C.model.device = "cuda"
-_C.model.dilate_num = 26  # 26 or 2. 2 is wrong, only for speed test
-# _C.model.mode = "train"  # or test. NOTE THAT THIS IS NOT THE SAME AS MODEL.TRAINING().
 _C.dbg = False
 _C.deterministic = False
 _C.evaltime = False
-_C.model.meta_architecture = "NeRF"
-_C.model.resnet = CN()
-_C.model.resnet.num_classes = 1000
-_C.model.resnet.pretrained = True
+
+_C.model.meta_architecture = "resnet"
+
+_C.model.yolact = CN()
+_C.model.yolact.freeze_bn = True
+_C.model.yolact.backbone = CN()
+_C.model.yolact.backbone.args = [3, 4, 6, 3]
+_C.model.yolact.backbone.selected_layers = [1, 2, 3]
+_C.model.yolact.backbone.pred_aspect_ratios = [[[1, 0.5, 2]], [[1, 0.5, 2]], [[1, 0.5, 2]], [[1, 0.5, 2]],
+                                               [[1, 0.5, 2]]]
+_C.model.yolact.backbone.pred_scales = [[24], [48], [96], [192], [384]]
+_C.model.yolact.backbone.preapply_sqrt = False
+_C.model.yolact.backbone.use_pixel_scales = True
+_C.model.yolact.backbone.use_square_anchors = True
+_C.model.yolact.pretrained_backbone = '/raid/linghao/project_data/yolact/weights/resnet50-19c8e357.pth'
+
+_C.model.yolact.mask_type = 1
+# _C.model.yolact.mask_dim = 1
+_C.model.yolact.mask_proto_use_grid = False
+_C.model.yolact.mask_proto_src = 0
+_C.model.yolact.mask_proto_bias = False
+_C.model.yolact.mask_proto_net = [(256, 3, {'padding': 1}), (256, 3, {'padding': 1}), (256, 3, {'padding': 1}),
+                                  (None, -2, {}), (256, 3, {'padding': 1}), (32, 1, {})]
+_C.model.yolact.use_maskiou = False
+_C.model.yolact.share_prediction_module = True
+_C.model.yolact.use_class_existence_loss = False
+_C.model.yolact.use_semantic_segmentation_loss = True
+_C.model.yolact.num_classes = 81
+_C.model.yolact.mask_proto_split_prototypes_by_head = False
+_C.model.yolact.mask_proto_prototypes_as_features = False
+_C.model.yolact.extra_head_net = [(256, 3, {'padding': 1})]
+_C.model.yolact.use_prediction_module = False
+_C.model.yolact.head_layer_params = CN()
+_C.model.yolact.head_layer_params.kernel_size = 3
+_C.model.yolact.head_layer_params.padding = 1
+_C.model.yolact.use_mask_scoring = False
+_C.model.yolact.use_instance_coeff = False
+_C.model.yolact.num_instance_coeffs = 64
+_C.model.yolact.extra_layers = [0, 0, 0]
+_C.model.yolact.mask_proto_coeff_gate = False
+_C.model.yolact.nms_top_k = 200
+_C.model.yolact.nms_conf_thresh = 0.05
+_C.model.yolact.nms_thresh = 0.5
+_C.model.yolact.positive_iou_threshold = 0.5
+_C.model.yolact.negative_iou_threshold = 0.4
+_C.model.yolact.ohem_negpos_ratio = 3
+_C.model.yolact.use_class_balanced_conf = False
+_C.model.yolact.eval_mask_branch = True
+_C.model.yolact.mask_proto_prototypes_as_features_no_grad = False
+_C.model.yolact.extra_head_net = [(256, 3, {'padding': 1})]
+_C.model.yolact.use_yolo_regressors = False
+_C.model.yolact.max_size = 550
+_C.model.yolact.use_prediction_matching = False
+_C.model.yolact.crowd_iou_threshold = 0.7
+_C.model.yolact.use_change_matching = False
+_C.model.yolact.train_boxes = True
+_C.model.yolact.train_masks = True
+_C.model.yolact.bbox_alpha = 1.5
+_C.model.yolact.mask_alpha = 6.125
+# _C.model.yolact.mask_proto_loss = None
+_C.model.yolact.use_focal_loss = False
+_C.model.yolact.use_sigmoid_focal_loss = False
+_C.model.yolact.use_objectness_score = False
+_C.model.yolact.mask_proto_crop = True
+_C.model.yolact.mask_proto_normalize_emulate_roi_pooling = True
+_C.model.yolact.mask_proto_remove_empty_masks = False
+_C.model.yolact.mask_proto_binarize_downsampled_gt = True
+_C.model.yolact.mask_proto_remove_empty_masks = False
+_C.model.yolact.mask_proto_reweight_mask_loss = False
+_C.model.yolact.mask_proto_reweight_coeff = 1
+_C.model.yolact.mask_proto_crop_with_pred_box = False
+_C.model.yolact.mask_proto_coeff_diversity_loss = False
+_C.model.yolact.masks_to_train = 100
+_C.model.yolact.mask_proto_double_loss = False
+_C.model.yolact.mask_proto_normalize_mask_loss_by_sqrt_area = False
+_C.model.yolact.mask_proto_normalize_emulate_roi_pooling = True
+_C.model.yolact.ohem_use_most_confident = False
+_C.model.yolact.use_class_balanced_conf = False
+_C.model.yolact.conf_alpha = 1
+_C.model.yolact.semantic_segmentation_alpha = 1
+_C.model.yolact.ohem_use_most_confident = False
+_C.model.yolact.max_num_detections = 100
+_C.model.yolact.display_text = True
+_C.model.yolact.display_scores = True
+_C.model.yolact.score_threshold = 0.0
+_C.model.yolact.top_k = 5
+_C.model.yolact.class_names = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
+                               'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
+                               'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog',
+                               'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe',
+                               'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+                               'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat',
+                               'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+                               'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
+                               'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot',
+                               'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+                               'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop',
+                               'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven',
+                               'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+                               'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+
+_C.model.yolact.fpn = CN()
+_C.model.yolact.fpn.interpolation_mode = 'bilinear'
+_C.model.yolact.fpn.num_downsample = 2
+_C.model.yolact.fpn.num_features = 256
+_C.model.yolact.fpn.pad = True
+_C.model.yolact.fpn.relu_downsample_layers = False
+_C.model.yolact.fpn.relu_pred_layers = True
+_C.model.yolact.fpn.use_conv_downsample = True
 
 _C.dataset = CN()
 _C.dataset.kitti = CN()
 
 _C.input = CN()
 _C.input.transforms = []
+_C.input.transforms_test = []
 _C.input.shuffle = True
 
 _C.datasets = CN()

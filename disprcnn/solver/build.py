@@ -4,14 +4,14 @@ from dl_ext.pytorch_ext import OneCycleScheduler
 from torch.optim import SGD, Adam
 from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 
-from disprcnn.modeling.models.star.core import STaR
+# from disprcnn.modeling.models.star.core import STaR
 # from disprcnn.modeling.models.disprcnn.nds import NdsWarpper
 from .lr_scheduler import WarmupMultiStepLR, WarmupCosineLR, ExponentialScheduler, WarmupExponentialScheduler
-from ..modeling.models.barf.barf import BaRF
-from ..modeling.models.star_sdf.star_sdf import STaRSdf
-from ..modeling.models.star_ps.core import STaRPs
-from ..modeling.models.star_mm.starmm import STaRMM
-from ..modeling.models.starmo.starmo import STaRMo
+# from ..modeling.models.barf.barf import BaRF
+# from ..modeling.models.star_sdf.star_sdf import STaRSdf
+# from ..modeling.models.star_ps.core import STaRPs
+# from ..modeling.models.star_mm.starmm import STaRMM
+# from ..modeling.models.starmo.starmo import STaRMo
 
 
 def make_optimizer(cfg, model):
@@ -25,15 +25,15 @@ def make_optimizer(cfg, model):
         if "bias" in key:
             lr = cfg.solver.max_lr * cfg.solver.bias_lr_factor
             weight_decay = cfg.solver.weight_decay_bias
-        if isinstance(model, (STaR, STaRSdf, STaRPs, STaRMM, STaRMo)) and "objpose" in key:
-            params += [{"params": [value], "lr": pose_lr,
-                        "weight_decay": weight_decay}]
-        elif isinstance(model, BaRF) and 'se3_refine' in key:
-            params += [{"params": [value], "lr": pose_lr,
-                        "weight_decay": weight_decay}]
-        else:
-            params += [{"params": [value], "lr": lr,
-                        "weight_decay": weight_decay}]
+        # if isinstance(model, (STaR, STaRSdf, STaRPs, STaRMM, STaRMo)) and "objpose" in key:
+        #     params += [{"params": [value], "lr": pose_lr,
+        #                 "weight_decay": weight_decay}]
+        # elif isinstance(model, BaRF) and 'se3_refine' in key:
+        #     params += [{"params": [value], "lr": pose_lr,
+        #                 "weight_decay": weight_decay}]
+        # else:
+        params += [{"params": [value], "lr": lr,
+                    "weight_decay": weight_decay}]
     if cfg.solver.optimizer == 'SGD':
         optimizer = SGD(params, lr, momentum=cfg.solver.momentum)
     elif cfg.solver.optimizer == 'Adam':

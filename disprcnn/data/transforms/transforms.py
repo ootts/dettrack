@@ -1,4 +1,6 @@
-import random
+import cv2
+from numpy import random
+from math import sqrt
 
 import numpy as np
 import torch
@@ -14,15 +16,10 @@ class Compose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, inputs, target=None, **kwargs):
-        if target is None:
-            for t in self.transforms:
-                inputs = t(inputs, **kwargs)
-            return inputs
-        else:
-            for t in self.transforms:
-                inputs, target = t(inputs, target, **kwargs)
-            return inputs, target
+    def __call__(self, dps):
+        for t in self.transforms:
+            dps = t(dps)
+        return dps
 
     def __repr__(self):
         format_string = self.__class__.__name__ + "("
@@ -31,52 +28,6 @@ class Compose(object):
             format_string += "    {0}".format(t)
         format_string += "\n)"
         return format_string
-
-    def get_voxel_sizes(self):
-        for t in self.transforms:
-            if hasattr(t, 'voxel_sizes'):
-                return getattr(t, 'voxel_sizes')
-        return None
-
-
-class Resize(object):
-    def __init__(self, min_size, max_size):
-        if not isinstance(min_size, (list, tuple)):
-            min_size = (min_size,)
-        self.min_size = min_size
-        self.max_size = max_size
-
-    # modified from torchvision to add support for max size
-    def get_size(self, image_size):
-        w, h = image_size
-        size = random.choice(self.min_size)
-        max_size = self.max_size
-        if max_size is not None:
-            min_original_size = float(min((w, h)))
-            max_original_size = float(max((w, h)))
-            if max_original_size / min_original_size * size > max_size:
-                size = int(round(max_size * min_original_size / max_original_size))
-
-        if (w <= h and w == size) or (h <= w and h == size):
-            return h, w
-
-        if w < h:
-            ow = size
-            oh = int(size * h / w)
-        else:
-            oh = size
-            ow = int(size * w / h)
-
-        return oh, ow
-
-    def __call__(self, image, target=None, **kwargs):
-        size = self.get_size(image.size)
-        image = F.resize(image, size)
-        if target is None:
-            return image
-        if hasattr(target, 'resize'):
-            target = target.resize(image.size)
-        return image, target
 
 
 class RandomHorizontalFlip(object):
@@ -133,230 +84,6 @@ class Normalize(object):
         return image, target
 
 
-class Voxelization(object):
-    def __init__(self, voxel_sizes, feature):
-        if isinstance(voxel_sizes, float):
-            voxel_sizes = [voxel_sizes]
-        self.voxel_sizes = voxel_sizes
-        self.feature = feature  # tsdf/color
-
-    def __call__(self, inputs, targets=None, **kwargs):
-        sample0 = inputs['sample0']
-        sample1 = inputs['sample1']
-        for voxel_size in self.voxel_sizes:
-            sample0 = self.voxelize_one_sample(sample0, voxel_size)
-            sample1 = self.voxelize_one_sample(sample1, voxel_size)
-        sample0['pixelloc_to_voxelidx'] = np.stack(sample0['pixelloc_to_voxelidxs'])
-        sample0.pop('pixelloc_to_voxelidxs')
-        sample1['pixelloc_to_voxelidx'] = np.stack(sample1['pixelloc_to_voxelidxs'])
-        sample1.pop('pixelloc_to_voxelidxs')
-        inputs['sample0'] = sample0
-        inputs['sample1'] = sample1
-        if targets is None:
-            return inputs
-        else:
-            raise NotImplementedError()
-            voxel_flow3d = self.voxelize_3d_flow(inputs['sample0']['coord'], targets['flow3d'])
-            targets['voxel_flow3d'] = voxel_flow3d
-            return inputs, targets
-
-    def voxelize_one_sample(self, sample, voxel_size):
-        coord, feat = sample['coord'], sample[self.feature]
-        rounded_coord = np.round(coord / voxel_size).astype(np.int32)
-        inds, invs = sparse_quantize(rounded_coord, feat,
-                                     return_index=True,
-                                     return_invs=True)
-        voxel_pc = rounded_coord[inds]
-        voxel_feat = feat[inds]
-        if 'voxel_pc' not in sample:
-            sample['voxel_pc'] = []
-        if 'voxel_feat' not in sample:
-            sample['voxel_feat'] = []
-        sample['voxel_pc'].append(voxel_pc)
-        sample['voxel_feat'].append(voxel_feat)
-        if 'pixelloc_to_voxelidxs' not in sample:
-            sample['pixelloc_to_voxelidxs'] = []
-        if 'pixelloc_to_voxelidx' in sample:
-            pixelloc_to_voxelidx = sample['pixelloc_to_voxelidx'].copy().reshape(-1)
-            pixelloc_to_voxelidx[pixelloc_to_voxelidx != -1] = invs
-            sample['pixelloc_to_voxelidxs'].append(pixelloc_to_voxelidx.reshape(sample['pixelloc_to_voxelidx'].shape))
-        return sample
-
-    def voxelize_3d_flow(self, coord, flow3d):
-        rounded_coord = np.round(coord / self.voxel_size).astype(np.int32)
-        inds = sparse_quantize(rounded_coord, flow3d,
-                               return_index=True,
-                               return_invs=True)[0]
-        voxel_pc = rounded_coord[inds]
-        voxel_flow3d = flow3d[inds]
-        voxel_flow3d = voxel_flow3d / self.voxel_size
-        return voxel_flow3d
-
-
-class ToSparseTensor(object):
-    def __call__(self, inputs, targets=None, **kwargs):
-        inputs['sample0'] = self.to_sparse_tensor_for_one_sample(inputs['sample0'])
-        inputs['sample1'] = self.to_sparse_tensor_for_one_sample(inputs['sample1'])
-        if targets is None:
-            return inputs
-        else:
-            return inputs, targets
-
-    def to_sparse_tensor_for_one_sample(self, sample):
-        voxel_feats = sample['voxel_feat']
-        voxel_pcs = sample['voxel_pc']
-        if 'sparse_tensor' not in sample:
-            sample['sparse_tensor'] = []
-        for voxel_feat, voxel_pc in safe_zip(voxel_feats, voxel_pcs):
-            sparse_tensor = ts.SparseTensor(torch.as_tensor(voxel_feat),
-                                            torch.as_tensor(voxel_pc))
-            sample['sparse_tensor'].append(sparse_tensor)
-        return sample
-
-
-class ToPointTensor(object):
-    def __init__(self, feature):
-        self.feature = feature
-
-    def __call__(self, inputs, targets=None, **kwargs):
-        evaltime = EvalTime(disable=True)
-        evaltime('')
-        inputs['sample0'] = self.to_point_tensor_for_one_sample(inputs['sample0'])
-        if 'sample1' in inputs:
-            inputs['sample1'] = self.to_point_tensor_for_one_sample(inputs['sample1'])
-        evaltime('to point tensor')
-        if targets is None:
-            return inputs
-        else:
-            return inputs, targets
-
-    def to_point_tensor_for_one_sample(self, sample):
-        if self.feature == 'one':
-            point_feats = np.ones((sample['coord'].shape[0], 1), dtype=np.float32)
-        elif self.feature == 'one+coord':
-            point_feats = np.ones((sample['coord'].shape[0], 1), dtype=np.float32)
-            point_feats = np.concatenate((point_feats, sample['coord']), axis=1)
-        else:
-            point_feats = sample[self.feature]
-        point_pcs = sample['coord']
-        sample['point_tensor'] = ts.PointTensor(torch.as_tensor(point_feats),
-                                                torch.as_tensor(point_pcs))
-        return sample
-
-
-class SpvcnnVoxelization(object):
-    def __init__(self, voxel_sizes, late=False):
-        if isinstance(voxel_sizes, float):
-            voxel_sizes = [voxel_sizes]
-        self.voxel_sizes = voxel_sizes
-        # self.feature = feature  # one/tsdf
-        self.late = late
-
-    def __call__(self, inputs, targets=None, **kwargs):
-        if not self.late:
-            evaltime = EvalTime(disable=True)
-            evaltime('')
-            trans_sample1 = 'sample1' in inputs
-            sample0 = inputs['sample0']
-            if trans_sample1: sample1 = inputs['sample1']
-            for vi, voxel_size in enumerate(self.voxel_sizes):
-                sample0 = self.voxelize_one_sample(sample0, voxel_size, vi)
-                if trans_sample1:
-                    sample1 = self.voxelize_one_sample(sample1, voxel_size, vi)
-            evaltime('voxelize samples')
-            sample0['pixelloc_to_voxelidx'] = stack(sample0['pixelloc_to_voxelidxs'])
-            sample0.pop('pixelloc_to_voxelidxs')
-            if isinstance(sample0['pixelloc_to_voxelidx'], list) and len(sample0['pixelloc_to_voxelidx']) == 0:
-                sample0.pop('pixelloc_to_voxelidx')
-            if trans_sample1:
-                sample1['pixelloc_to_voxelidx'] = stack(sample1['pixelloc_to_voxelidxs'])
-                sample1.pop('pixelloc_to_voxelidxs')
-                if isinstance(sample1['pixelloc_to_voxelidx'], list) and len(sample1['pixelloc_to_voxelidx']) == 0:
-                    sample1.pop('pixelloc_to_voxelidx')
-            inputs['sample0'] = sample0
-            if trans_sample1: inputs['sample1'] = sample1
-            evaltime('spvcnn voxelization')
-        if targets is None:
-            return inputs
-        else:
-            raise NotImplementedError()
-
-    def voxelize_one_sample(self, sample, voxel_size, i):
-        from disprcnn.utils.ts_utils import pad_batch_idx, remove_batch_idx
-
-        if 'point_tensors' in sample and 'sparse_tensors' in sample and len(sample['point_tensors']) > i and len(
-                sample['sparse_tensors']) > i:
-            z = sample['point_tensors'][0]
-            x = sample['sparse_tensors'][0]
-        else:
-            z = pad_batch_idx(sample['point_tensor'].clone())
-            x, z = initial_voxelize_cpu(z, 1.0, voxel_size)
-            x = remove_batch_idx(x)
-            z = remove_batch_idx(z)
-            if 'sparse_tensors' not in sample:
-                sample['sparse_tensors'] = []
-            if 'point_tensors' not in sample:
-                sample['point_tensors'] = []
-            sample['sparse_tensors'].append(x)
-            sample['point_tensors'].append(z)
-
-        invs = z.additional_features['idx_query'][1]
-        if 'pixelloc_to_voxelidxs' not in sample:
-            sample['pixelloc_to_voxelidxs'] = []
-        if 'pixelloc_to_voxelidx' in sample:
-            pixelloc_to_voxelidx = sample['pixelloc_to_voxelidx'].copy().reshape(-1)
-            pixelloc_to_voxelidx[pixelloc_to_voxelidx != -1] = invs
-            sample['pixelloc_to_voxelidxs'].append(pixelloc_to_voxelidx.reshape(sample['pixelloc_to_voxelidx'].shape))
-        return sample
-
-
-class ClipRange(object):
-    def __init__(self, range):
-        """
-        Keep point cloud only in specified range.
-        :param range: xmin,ymin,zmin,xmax,ymax,zmax
-        """
-        self.range = range
-
-    def __call__(self, inputs, targets=None, **kwargs):
-        range = kwargs.get('range', self.range)
-        coord0 = inputs['sample0']['coord']
-        keep0 = np.logical_and.reduce([
-            coord0[:, 0] > range[0],
-            coord0[:, 1] > range[1],
-            coord0[:, 2] > range[2],
-            coord0[:, 0] < range[3],
-            coord0[:, 1] < range[4],
-            coord0[:, 2] < range[5]
-        ])
-        inputs['sample0']['coord'] = inputs['sample0']['coord'][keep0]
-        inputs['sample0']['color'] = inputs['sample0']['color'][keep0]
-        inputs['sample0']['pixelloc_to_voxelidx'].fill(-1)
-        inputs['sample0']['pixelloc_to_voxelidx'].reshape(-1)[keep0.nonzero()[0]] = np.arange(
-            keep0.nonzero()[0].shape[0])
-        if targets is not None:
-            targets['flow3d'] = targets['flow3d'][keep0]
-        coord1 = inputs['sample1']['coord']
-        keep1 = np.logical_and.reduce([
-            coord1[:, 0] > range[0],
-            coord1[:, 1] > range[1],
-            coord1[:, 2] > range[2],
-            coord1[:, 0] < range[3],
-            coord1[:, 1] < range[4],
-            coord1[:, 2] < range[5]
-        ])
-        inputs['sample1']['coord'] = inputs['sample1']['coord'][keep1]
-        inputs['sample1']['color'] = inputs['sample1']['color'][keep1]
-        inputs['sample1']['pixelloc_to_voxelidx'].fill(-1)
-        inputs['sample1']['pixelloc_to_voxelidx'].reshape(-1)[keep1.nonzero()[0]] = np.arange(
-            keep1.nonzero()[0].shape[0])
-
-        if targets is None:
-            return inputs
-        else:
-            return inputs, targets
-
-
 class CenterCrop:
     def __init__(self, width, height):
         self.width = width
@@ -380,3 +107,541 @@ class CenterCrop:
         inputs['K'][0, 2] = inputs['K'][0, 2] - sw
         inputs['K'][1, 2] = inputs['K'][1, 2] - sh
         return inputs
+
+
+MEANS = (103.94, 116.78, 123.68)
+STD = (57.38, 57.12, 58.40)
+
+
+class Expand(object):
+    def __init__(self, mean):
+        self.mean = mean
+
+    def __call__(self, dps):
+        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+        if random.randint(2):
+            return dps
+
+        height, width, depth = image.shape
+        ratio = random.uniform(1, 4)
+        left = random.uniform(0, width * ratio - width)
+        top = random.uniform(0, height * ratio - height)
+
+        expand_image = np.zeros(
+            (int(height * ratio), int(width * ratio), depth),
+            dtype=image.dtype)
+        expand_image[:, :, :] = self.mean
+        expand_image[int(top):int(top + height),
+        int(left):int(left + width)] = image
+        image = expand_image
+
+        expand_masks = np.zeros(
+            (masks.shape[0], int(height * ratio), int(width * ratio)),
+            dtype=masks.dtype)
+        expand_masks[:, int(top):int(top + height),
+        int(left):int(left + width)] = masks
+        masks = expand_masks
+
+        boxes = boxes.copy()
+        boxes[:, :2] += (int(left), int(top))
+        boxes[:, 2:] += (int(left), int(top))
+        dps['image'] = image
+        dps['masks'] = masks
+        dps['boxes'] = boxes
+        dps['labels'] = labels
+        return dps
+
+
+def intersect(box_a, box_b):
+    max_xy = np.minimum(box_a[:, 2:], box_b[2:])
+    min_xy = np.maximum(box_a[:, :2], box_b[:2])
+    inter = np.clip((max_xy - min_xy), a_min=0, a_max=np.inf)
+    return inter[:, 0] * inter[:, 1]
+
+
+def jaccard_numpy(box_a, box_b):
+    """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap
+    is simply the intersection over union of two boxes.
+    E.g.:
+        A ∩ B / A ∪ B = A ∩ B / (area(A) + area(B) - A ∩ B)
+    Args:
+        box_a: Multiple bounding boxes, Shape: [num_boxes,4]
+        box_b: Single bounding box, Shape: [4]
+    Return:
+        jaccard overlap: Shape: [box_a.shape[0], box_a.shape[1]]
+    """
+    inter = intersect(box_a, box_b)
+    area_a = ((box_a[:, 2] - box_a[:, 0]) *
+              (box_a[:, 3] - box_a[:, 1]))  # [A,B]
+    area_b = ((box_b[2] - box_b[0]) *
+              (box_b[3] - box_b[1]))  # [A,B]
+    union = area_a + area_b - inter
+    return inter / union  # [A,B]
+
+
+class RandomSampleCrop(object):
+    """Crop
+    Arguments:
+        img (Image): the image being input during training
+        boxes (Tensor): the original bounding boxes in pt form
+        labels (Tensor): the class labels for each bbox
+        mode (float tuple): the min and max jaccard overlaps
+    Return:
+        (img, boxes, classes)
+            img (Image): the cropped image
+            boxes (Tensor): the adjusted bounding boxes in pt form
+            labels (Tensor): the class labels for each bbox
+    """
+
+    def __init__(self):
+        self.sample_options = (
+            # using entire original input image
+            None,
+            # sample a patch s.t. MIN jaccard w/ obj in .1,.3,.4,.7,.9
+            (0.1, None),
+            (0.3, None),
+            (0.7, None),
+            (0.9, None),
+            # randomly sample a patch
+            (None, None),
+        )
+
+    def __call__(self, dps):
+        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+        height, width, _ = image.shape
+        while True:
+            # randomly choose a mode
+            mode = random.choice(self.sample_options)
+            if mode is None:
+                return dps
+
+            min_iou, max_iou = mode
+            if min_iou is None:
+                min_iou = float('-inf')
+            if max_iou is None:
+                max_iou = float('inf')
+
+            # max trails (50)
+            for _ in range(50):
+                current_image = image
+
+                w = random.uniform(0.3 * width, width)
+                h = random.uniform(0.3 * height, height)
+
+                # aspect ratio constraint b/t .5 & 2
+                if h / w < 0.5 or h / w > 2:
+                    continue
+
+                left = random.uniform(width - w)
+                top = random.uniform(height - h)
+
+                # convert to integer rect x1,y1,x2,y2
+                rect = np.array([int(left), int(top), int(left + w), int(top + h)])
+
+                # calculate IoU (jaccard overlap) b/t the cropped and gt boxes
+                overlap = jaccard_numpy(boxes, rect)
+
+                # This piece of code is bugged and does nothing:
+                # https://github.com/amdegroot/ssd.pytorch/issues/68
+                #
+                # However, when I fixed it with overlap.max() < min_iou,
+                # it cut the mAP in half (after 8k iterations). So it stays.
+                #
+                # is min and max overlap constraint satisfied? if not try again
+                if overlap.min() < min_iou and max_iou < overlap.max():
+                    continue
+
+                # cut the crop from the image
+                current_image = current_image[rect[1]:rect[3], rect[0]:rect[2],
+                                :]
+
+                # keep overlap with gt box IF center in sampled patch
+                centers = (boxes[:, :2] + boxes[:, 2:]) / 2.0
+
+                # mask in all gt boxes that above and to the left of centers
+                m1 = (rect[0] < centers[:, 0]) * (rect[1] < centers[:, 1])
+
+                # mask in all gt boxes that under and to the right of centers
+                m2 = (rect[2] > centers[:, 0]) * (rect[3] > centers[:, 1])
+
+                # mask in that both m1 and m2 are true
+                mask = m1 * m2
+
+                # [0 ... 0 for num_gt and then 1 ... 1 for num_crowds]
+                num_crowds = labels['num_crowds']
+                crowd_mask = np.zeros(mask.shape, dtype=np.int32)
+
+                if num_crowds > 0:
+                    crowd_mask[-num_crowds:] = 1
+
+                # have any valid boxes? try again if not
+                # Also make sure you have at least one regular gt
+                if not mask.any() or np.sum(1 - crowd_mask[mask]) == 0:
+                    continue
+
+                # take only the matching gt masks
+                current_masks = masks[mask, :, :].copy()
+
+                # take only matching gt boxes
+                current_boxes = boxes[mask, :].copy()
+
+                # take only matching gt labels
+                labels['labels'] = labels['labels'][mask]
+                current_labels = labels
+
+                # We now might have fewer crowd annotations
+                if num_crowds > 0:
+                    labels['num_crowds'] = np.sum(crowd_mask[mask])
+
+                # should we use the box left and top corner or the crop's
+                current_boxes[:, :2] = np.maximum(current_boxes[:, :2],
+                                                  rect[:2])
+                # adjust to crop (by substracting crop's left,top)
+                current_boxes[:, :2] -= rect[:2]
+
+                current_boxes[:, 2:] = np.minimum(current_boxes[:, 2:],
+                                                  rect[2:])
+                # adjust to crop (by substracting crop's left,top)
+                current_boxes[:, 2:] -= rect[:2]
+
+                # crop the current masks to the same dimensions as the image
+                current_masks = current_masks[:, rect[1]:rect[3], rect[0]:rect[2]]
+                dps['image'] = current_image
+                dps['masks'] = current_masks
+                dps['boxes'] = current_boxes
+                dps['labels'] = current_labels
+                return dps
+
+
+class ToAbsoluteCoords(object):
+    def __call__(self, dps):
+        height, width, channels = dps['image'].shape
+        dps['boxes'][:, 0] *= width
+        dps['boxes'][:, 2] *= width
+        dps['boxes'][:, 1] *= height
+        dps['boxes'][:, 3] *= height
+
+        return dps
+
+
+class ConvertFromInts(object):
+    def __call__(self, dps):
+        image = dps['image']
+        dps['image'] = image.astype(np.float32)
+        return dps
+
+
+class ToPercentCoords(object):
+    def __call__(self, dps):
+        height, width, channels = dps['image'].shape
+        dps['boxes'][:, 0] /= width
+        dps['boxes'][:, 2] /= width
+        dps['boxes'][:, 1] /= height
+        dps['boxes'][:, 3] /= height
+
+        return dps
+
+
+class Pad(object):
+    """
+    Pads the image to the input width and height, filling the
+    background with mean and putting the image in the top-left.
+
+    Note: this expects im_w <= width and im_h <= height
+    """
+
+    def __init__(self, width, height, mean=MEANS, pad_gt=True):
+        self.mean = mean
+        self.width = width
+        self.height = height
+        self.pad_gt = pad_gt
+
+    def __call__(self, dps):
+        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+        im_h, im_w, depth = image.shape
+
+        expand_image = np.zeros(
+            (self.height, self.width, depth),
+            dtype=image.dtype)
+        expand_image[:, :, :] = self.mean
+        expand_image[:im_h, :im_w] = image
+
+        if self.pad_gt:
+            expand_masks = np.zeros(
+                (masks.shape[0], self.height, self.width),
+                dtype=masks.dtype)
+            expand_masks[:, :im_h, :im_w] = masks
+            masks = expand_masks
+        dps['image'] = expand_image
+        dps['masks'] = masks
+        dps['boxes'] = boxes
+        dps['labels'] = labels
+        return dps
+
+
+class Resize(object):
+    """ If preserve_aspect_ratio is true, this resizes to an approximate area of max_size * max_size """
+
+    @staticmethod
+    def calc_size_preserve_ar(img_w, img_h, max_size):
+        """ I mathed this one out on the piece of paper. Resulting width*height = approx max_size^2 """
+        ratio = sqrt(img_w / img_h)
+        w = max_size * ratio
+        h = max_size / ratio
+        return int(w), int(h)
+
+    def __init__(self, max_size, preserve_aspect_ratio, discard_box_width, discard_box_height, resize_gt=True):
+        self.resize_gt = resize_gt
+        self.max_size = max_size
+        self.preserve_aspect_ratio = preserve_aspect_ratio
+        self.discard_box_width = discard_box_width
+        self.discard_box_height = discard_box_height
+
+    def __call__(self, dps):
+        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+        img_h, img_w, _ = image.shape
+
+        if self.preserve_aspect_ratio:
+            width, height = Resize.calc_size_preserve_ar(img_w, img_h, self.max_size)
+        else:
+            width, height = self.max_size, self.max_size
+
+        image = cv2.resize(image, (width, height))
+
+        if self.resize_gt:
+            # Act like each object is a color channel
+            masks = masks.transpose((1, 2, 0))
+            masks = cv2.resize(masks, (width, height))
+
+            # OpenCV resizes a (w,h,1) array to (s,s), so fix that
+            if len(masks.shape) == 2:
+                masks = np.expand_dims(masks, 0)
+            else:
+                masks = masks.transpose((2, 0, 1))
+
+            # Scale bounding boxes (which are currently absolute coordinates)
+            boxes[:, [0, 2]] *= (width / img_w)
+            boxes[:, [1, 3]] *= (height / img_h)
+
+        # Discard boxes that are smaller than we'd like
+        w = boxes[:, 2] - boxes[:, 0]
+        h = boxes[:, 3] - boxes[:, 1]
+
+        keep = (w > self.discard_box_width) * (h > self.discard_box_height)
+        masks = masks[keep]
+        boxes = boxes[keep]
+        labels['labels'] = labels['labels'][keep]
+        labels['num_crowds'] = (labels['labels'] < 0).sum()
+        dps['image'] = image
+        dps['masks'] = masks
+        dps['boxes'] = boxes
+        dps['labels'] = labels
+        return dps
+
+
+class RandomSaturation(object):
+    def __init__(self, lower=0.5, upper=1.5):
+        self.lower = lower
+        self.upper = upper
+        assert self.upper >= self.lower, "contrast upper must be >= lower."
+        assert self.lower >= 0, "contrast lower must be non-negative."
+
+    def __call__(self, image):
+        if random.randint(2):
+            image[:, :, 1] *= random.uniform(self.lower, self.upper)
+
+        return image
+
+
+class RandomHue(object):
+    def __init__(self, delta=18.0):
+        assert delta >= 0.0 and delta <= 360.0
+        self.delta = delta
+
+    def __call__(self, image):
+        if random.randint(2):
+            image[:, :, 0] += random.uniform(-self.delta, self.delta)
+            image[:, :, 0][image[:, :, 0] > 360.0] -= 360.0
+            image[:, :, 0][image[:, :, 0] < 0.0] += 360.0
+        return image
+
+
+class ConvertColor(object):
+    def __init__(self, current='BGR', transform='HSV'):
+        self.transform = transform
+        self.current = current
+
+    def __call__(self, image):
+        if self.current == 'BGR' and self.transform == 'HSV':
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        elif self.current == 'HSV' and self.transform == 'BGR':
+            image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+        else:
+            raise NotImplementedError
+        return image
+
+
+class RandomContrast(object):
+    def __init__(self, lower=0.5, upper=1.5):
+        self.lower = lower
+        self.upper = upper
+        assert self.upper >= self.lower, "contrast upper must be >= lower."
+        assert self.lower >= 0, "contrast lower must be non-negative."
+
+    # expects float image
+    def __call__(self, image):
+        if random.randint(2):
+            alpha = random.uniform(self.lower, self.upper)
+            image *= alpha
+        return image
+
+
+class RandomBrightness(object):
+    def __init__(self, delta=32):
+        assert delta >= 0.0
+        assert delta <= 255.0
+        self.delta = delta
+
+    def __call__(self, image):
+        if random.randint(2):
+            delta = random.uniform(-self.delta, self.delta)
+            image += delta
+        return image
+
+
+class RandomLightingNoise(object):
+    def __init__(self):
+        self.perms = ((0, 1, 2), (0, 2, 1),
+                      (1, 0, 2), (1, 2, 0),
+                      (2, 0, 1), (2, 1, 0))
+
+    def __call__(self, image):
+        # Don't shuffle the channels please, why would you do this
+
+        # if random.randint(2):
+        #     swap = self.perms[random.randint(len(self.perms))]
+        #     shuffle = SwapChannels(swap)  # shuffle channels
+        #     image = shuffle(image)
+        return image
+
+
+class PhotometricDistort(object):
+    def __init__(self):
+        self.pd = [
+            RandomContrast(),
+            ConvertColor(transform='HSV'),
+            RandomSaturation(),
+            RandomHue(),
+            ConvertColor(current='HSV', transform='BGR'),
+            RandomContrast()
+        ]
+        self.rand_brightness = RandomBrightness()
+        self.rand_light_noise = RandomLightingNoise()
+
+    def __call__(self, dps):
+        im = dps['image'].copy()
+        im = self.rand_brightness(im)
+        if random.randint(2):
+            distort = Compose(self.pd[:-1])
+        else:
+            distort = Compose(self.pd[1:])
+        im = distort(im)
+        dps['image'] = self.rand_light_noise(im)
+        return dps
+
+
+class PrepareMasks(object):
+    """
+    Prepares the gt masks for use_gt_bboxes by cropping with the gt box
+    and downsampling the resulting mask to mask_size, mask_size. This
+    function doesn't do anything if cfg.use_gt_bboxes is False.
+    """
+
+    def __init__(self, mask_size, use_gt_bboxes):
+        self.mask_size = mask_size
+        self.use_gt_bboxes = use_gt_bboxes
+
+    def __call__(self, dps):
+        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+        if not self.use_gt_bboxes:
+            return dps
+
+        height, width, _ = image.shape
+
+        new_masks = np.zeros((masks.shape[0], self.mask_size ** 2))
+
+        for i in range(len(masks)):
+            x1, y1, x2, y2 = boxes[i, :]
+            x1 *= width
+            x2 *= width
+            y1 *= height
+            y2 *= height
+            x1, y1, x2, y2 = (int(x1), int(y1), int(x2), int(y2))
+
+            # +1 So that if y1=10.6 and y2=10.9 we still have a bounding box
+            cropped_mask = masks[i, y1:(y2 + 1), x1:(x2 + 1)]
+            scaled_mask = cv2.resize(cropped_mask, (self.mask_size, self.mask_size))
+
+            new_masks[i, :] = scaled_mask.reshape(1, -1)
+
+        # Binarize
+        new_masks[new_masks > 0.5] = 1
+        new_masks[new_masks <= 0.5] = 0
+        dps['image'] = image
+        dps['masks'] = new_masks
+        dps['boxes'] = boxes
+        dps['labels'] = labels
+        return image, new_masks, boxes, labels
+
+
+class RandomMirror(object):
+    def __call__(self, dps):
+        _, width, _ = dps['image'].shape
+        if random.randint(2):
+            dps['image'] = dps['image'][:, ::-1]
+            dps['masks'] = dps['masks'][:, :, ::-1]
+            dps['boxes'][:, 0::2] = width - dps['boxes'][:, 2::-2]
+        return dps
+
+
+class BackboneTransform(object):
+    """
+    Transforms a BRG image made of floats in the range [0, 255] to whatever
+    input the current backbone network needs.
+
+    transform is a transform config object (see config.py).
+    in_channel_order is probably 'BGR' but you do you, kid.
+    """
+
+    def __init__(self, mean, std, in_channel_order, channel_order, normalize, subtract_means, to_float):
+        self.mean = np.array(mean, dtype=np.float32)
+        self.std = np.array(std, dtype=np.float32)
+        self.in_channel_order = in_channel_order
+        self.channel_order = channel_order
+        self.normalize = normalize
+        self.subtract_means = subtract_means
+        self.to_float = to_float
+
+        # Here I use "Algorithms and Coding" to convert string permutations to numbers
+        self.channel_map = {c: idx for idx, c in enumerate(in_channel_order)}
+        self.channel_permutation = [self.channel_map[c] for c in channel_order]
+
+    def __call__(self, dps):
+        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+
+        image = image.astype(np.float32)
+
+        if self.normalize:
+            image = (image - self.mean) / self.std
+        elif self.subtract_means:
+            image = (image - self.mean)
+        elif self.to_float:
+            image = image / 255
+
+        image = image[:, :, self.channel_permutation]
+        image = image.astype(np.float32)
+        dps['image'] = image
+        dps['masks'] = masks
+        dps['boxes'] = boxes
+        dps['labels'] = labels
+        return dps

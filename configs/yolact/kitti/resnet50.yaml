@@ -11,7 +11,7 @@ solver:
   trainer: base
   batch_size: 8
   max_lr: 0.001
-  num_epochs: 55
+  num_epochs: 1500
   optimizer: SGD
   scheduler: WarmupMultiStepLR
   warmup_iters: 500
@@ -21,7 +21,7 @@ solver:
   weight_decay_bias: 0.0005
   save_every: True
   save_mode: iteration
-  save_freq: 1000
+  save_freq: 2500
   dist:
     sampler:
       shuffle: True

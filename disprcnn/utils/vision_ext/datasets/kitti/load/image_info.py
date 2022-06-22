@@ -4,6 +4,7 @@ import pickle
 from tqdm import tqdm
 import numpy as np
 
+
 class ImageInfoCache:
     instance = None
 
@@ -28,7 +29,9 @@ class ImageInfoCache:
 
     def load_info(self):
         if os.path.exists(self.cache_path):
-            return pickle.load(open(self.cache_path, 'rb'))
+            with open(self.cache_path, 'rb') as f:
+                info = pickle.load(f)
+            return info
         else:
             print('Cache not found. Generating...')
             from .image_2 import load_image_2

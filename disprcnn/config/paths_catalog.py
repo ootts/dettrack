@@ -32,9 +32,14 @@ def get_coco2017(name):
 
 def get_kittikins(name):
     split = name.split("_")[1]
+    ds_len = -1
+    if split == 'valmini':
+        split = 'val'
+        ds_len = 10
     return dict(
         factory='KITTIKinsDataset',
         args={'root': 'data/kitti',
               'split': split,
+              'ds_len': ds_len
               }
     )

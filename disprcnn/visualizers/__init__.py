@@ -1,4 +1,5 @@
 from ..registry import VISUALIZERS
+from .yolact import YolactVisualizer
 
 
 def build_visualizer(cfg):

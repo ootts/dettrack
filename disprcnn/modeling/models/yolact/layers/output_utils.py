@@ -36,7 +36,8 @@ import torch
     # net = dets['net']
     dets = dets['detection']
 
-    if dets is None:
+    # if dets is None:
+    if 'box' not in dets:
         return [torch.Tensor()] * 4  # Warning, this is 4 copies of the same thing
 
     if score_threshold > 0:

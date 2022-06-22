@@ -20,6 +20,8 @@ def detection_collate(batch):
     num_crowds = []
     heights = []
     widths = []
+    imgids = []
+    indexs = []
 
     for sample in batch:
         imgs.append(sample['image'])
@@ -28,16 +30,22 @@ def detection_collate(batch):
         num_crowds.append(int(sample['num_crowds']))
         heights.append(sample['height'])
         widths.append(sample['width'])
+        imgids.append(sample['imgid'])
+        indexs.append(sample['index'])
     imgs = torch.stack(imgs)
     heights = torch.tensor(heights)
     widths = torch.tensor(widths)
+    imgids = torch.tensor(imgids)
+    indexs = torch.tensor(indexs)
     dps = {
         'image': imgs,
         'targets': targets,
         'masks': masks,
         'num_crowds': num_crowds,
         'height': heights,
-        'width': widths
+        'width': widths,
+        'imgid': imgids,
+        'index': indexs
     }
     return dps
 

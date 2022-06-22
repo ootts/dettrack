@@ -708,10 +708,18 @@ class YolactWrapper(nn.Module):
         masks = dps['masks']
         num_crowds = dps['num_crowds']
         if not self.training:
-            img_numpy = self.prep_display(outputs, dps['image'][0], dps['height'][0].item(), dps['width'][0].item())
-            import matplotlib.pyplot as plt
-            plt.imshow(img_numpy)
-            plt.show()
+            if self.total_cfg.dbg:
+                img_numpy = self.prep_display(outputs, dps['image'][0], dps['height'][0].item(), dps['width'][0].item())
+                import matplotlib.pyplot as plt
+                plt.imshow(img_numpy)
+                plt.show()
+                print()
+            # dps['output'] = outputs
+            for o, idx in zip(outputs, dps['index'].tolist()):
+                if o['detection'] is None:
+                    o['detection'] = {}
+                o['detection']['index'] = idx
+            # outputs['index'] = dps['index']
             losses = {}
         else:
             losses = self.criterion(outputs, targets, masks, num_crowds, self.model.mask_dim)

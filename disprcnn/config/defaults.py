@@ -108,6 +108,7 @@ _C.model.yolact.class_names = ['person', 'bicycle', 'car', 'motorcycle', 'airpla
                                'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven',
                                'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
                                'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+_C.model.yolact.nvis = 10
 
 _C.model.yolact.fpn = CN()
 _C.model.yolact.fpn.interpolation_mode = 'bilinear'

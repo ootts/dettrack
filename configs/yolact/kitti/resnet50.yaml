@@ -6,6 +6,7 @@ model:
 datasets:
   train: ("kittikins_train",)
   test: "kittikins_val"
+#  test: "kittikins_valmini"
 solver:
   trainer: base
   batch_size: 8
@@ -75,8 +76,9 @@ input:
 
 test:
   do_visualization: True
-  visualizer: ??
-  evaluators: [ '??' ]
+  visualizer: yolact
+  evaluators: [ ]
+  batch_size: 2
 
 dataloader:
   collator: DetectionBatchCollator

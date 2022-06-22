@@ -233,6 +233,7 @@ class BaseTrainer:
                     output, loss_dict = self.model(batch)
                     output = to_cpu(output)
                     outputs.append(output)
+                outputs = list(itertools.chain(*outputs))
             os.makedirs(osp.dirname(prediction_path), exist_ok=True)
             if self.cfg.test.save_predictions and get_rank() == 0:
                 torch.save(outputs, prediction_path)
@@ -265,13 +266,14 @@ class BaseTrainer:
         if not is_main_process():
             return
         all_outputs = list(itertools.chain(*all_outputs))
+        all_outputs = list(itertools.chain(*all_outputs))
         all_outputs = all_outputs[:len(self.valid_dl.dataset)]
         # if isinstance(all_outputs[0], torch.Tensor):
         #     all_outputs = torch.cat(all_outputs, dim=0).cpu()
         # else:
         #     all_outputs = list(itertools.chain(*all_outputs))
         # print(type(all_outputs), len(all_outputs), type(all_outputs[0]), len(all_outputs[0]))
-        all_outputs = all_outputs[:len(self.valid_dl.dataset)]
+        # all_outputs = all_outputs[:len(self.valid_dl.dataset)]
         return all_outputs
 
     def to_base(self):

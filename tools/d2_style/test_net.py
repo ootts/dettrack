@@ -12,6 +12,8 @@ from disprcnn.utils.comm import get_world_size, get_rank
 from disprcnn.utils.os_utils import isckpt
 from disprcnn.visualizers import build_visualizer
 
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 def setup(args):
     """
@@ -22,6 +24,8 @@ def setup(args):
     if cfg.output_dir == '':
         assert args.config_file.startswith('configs') and args.config_file.endswith('.yaml')
         cfg.output_dir = args.config_file[:-5].replace('configs', 'models')
+    if 'PYCHARM_HOSTED' in os.environ:
+        cfg.dataloader.num_workers = 0
     cfg.model.mode = 'test'
     cfg.freeze()
     os.makedirs(cfg.output_dir, exist_ok=True)

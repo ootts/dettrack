@@ -72,57 +72,55 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         with open(self._imgsetpath % self.split) as f:
             self.ids = f.readlines()
         self.ids = [x.strip("\n") for x in self.ids]
-        if hasattr(self, 'o2dpreds'):
-            assert len(self.ids) == len(self.o2dpreds['left'])
         self.truncations_list, self.occlusions_list = self.get_truncations_occluded_list()
+        if ds_len > 0:
+            self.ids = self.ids[:ds_len]
 
         print('using dataset of length', self.__len__())
 
     def __getitem__(self, index):
+        # print('getitem', index)
         img = self.get_image(index)
+        imgid = int(self.ids[index])
+        height, width, _ = img.shape
+        num_crowds = 0
+
         targets = self.get_ground_truth(index)
         if not is_testing_split(self.split):
             labels = targets.get_field('labels')
             targets = targets[labels == 1]  # remove not cars
-            # if self.split == 'val' and self.remove_ignore:
-            #     raise NotImplementedError()
             masks = targets.get_field('kins_masks').get_mask_tensor(squeeze=False).numpy().astype(np.uint8)
             # adapt to yolact style
             tgts = []
-            height, width, _ = img.shape
             scale = torch.tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
             for bbox in targets.bbox:
                 tgt = bbox / scale
                 tgts.append(tgt.tolist() + [0])
-            num_crowds = 0
-            if self.transforms is not None:
-                if len(tgts) > 0:
-                    tgts = np.array(tgts)
-                    dps = {'image': img, 'masks': masks, 'boxes': tgts[:, :4],
-                           'labels': {'num_crowds': num_crowds,
-                                      'labels': tgts[:, 4]}}
-                    # img, masks, boxes, labels = self.transform(img, masks, target[:, :4],
-                    #                                            {'num_crowds': num_crowds, 'labels': target[:, 4]})
-                    dps = self.transforms(dps)
-                    img = dps['image']
-                    masks = dps['masks']
-                    boxes = dps['boxes']
-                    labels = dps['labels']
-                    # I stored num_crowds in labels so I didn't have to modify the entirety of augmentations
-                    num_crowds = labels['num_crowds']
-                    labels = labels['labels']
+            assert self.transforms is not None
+            if len(tgts) > 0:
+                tgts = np.array(tgts)
+                dps = {'image': img, 'masks': masks, 'boxes': tgts[:, :4],
+                       'labels': {'num_crowds': num_crowds, 'labels': tgts[:, 4]}}
+                dps = self.transforms(dps)
+                img = dps['image']
+                masks = dps['masks']
+                boxes = dps['boxes']
+                labels = dps['labels']
+                # I stored num_crowds in labels so I didn't have to modify the entirety of augmentations
+                num_crowds = labels['num_crowds']
+                labels = labels['labels']
 
-                    target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
+                target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
+            else:
+                if self.split == 'val':
+                    img = self.transforms({'image': img,
+                                           'masks': np.zeros((1, height, width), dtype=np.float),
+                                           'boxes': np.array([[0.0, 0.0, 1.0, 1.0]]),
+                                           'labels': {'num_crowds': 0, 'labels': np.array([0])}})['image']
+                    target = np.array([[0.0, 0, 1, 1, 1]])
+                    masks = np.zeros((1, height, width), dtype=np.float)
                 else:
                     return self.__getitem__(random.randint(0, len(self.ids) - 1))
-                    # img = self.transforms({'image': img,
-                    #                        'masks': np.zeros((1, height, width), dtype=np.float),
-                    #                        'boxes': np.array([[0.0, 0.0, 1.0, 1.0]]),
-                    #                        'labels': {'num_crowds': 0, 'labels': np.array([0])}})['image']
-                    # masks = None
-                    # target = None
-            # if target.shape[0] == 0:
-            #     print('Warning: Augmentation output an example with no ground truth. Resampling...')
 
         dps = {
             'image': torch.from_numpy(img).permute(2, 0, 1),
@@ -130,7 +128,9 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
             'masks': masks,
             'height': height,
             'width': width,
-            'num_crowds': num_crowds
+            'num_crowds': num_crowds,
+            'imgid': imgid,
+            'index': index
         }
         return dps
 
@@ -150,29 +150,12 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
             # left target
             left_target = BoxList(left_annotation["boxes"], (width, height), mode="xyxy")
             left_target.add_field("labels", left_annotation["labels"])
-            # left_target.add_field("alphas", left_annotation['alphas'])
-            # boxes_3d = Box3DList(left_annotation["boxes_3d"], (width, height), mode='ry_lhwxyz')
-            # left_target.add_field("box3d", boxes_3d)
-            # left_target.add_map('disparity', self.get_disparity(index))
-            # left_target.add_map('disparity_fg', self.get_disparity_fg(index))
-            # left_target.add_field('masks', self.get_mask(index))
             left_target.add_field('kins_masks', self.get_kins_mask(index, ))
-            # left_target.add_field('kins_a_masks', self.get_kins_a_mask(index))
-            # left_target.add_field('truncation', torch.tensor(self.truncations_list[int(img_id)]))
-            # left_target.add_field('occlusion', torch.tensor(self.occlusions_list[int(img_id)]))
             left_target.add_field('image_size', torch.tensor([[width, height]]).repeat(len(left_target), 1))
             left_target.add_field('calib', Calib(self.get_calibration(index), (width, height)))
             left_target.add_field('index', torch.full((len(left_target), 1), index, dtype=torch.long))
             left_target.add_field('imgid', torch.full((len(left_target), 1), int(img_id), dtype=torch.long))
             left_target = left_target.clip_to_image(remove_empty=True)
-            # right target
-            # right_target = BoxList(right_annotation["boxes"], (width, height), mode="xyxy")
-            # right_target.add_field("labels", right_annotation["labels"])
-            # right_target.add_field("alphas", right_annotation['alphas'])
-            # boxes_3d = Box3DList(right_annotation["boxes_3d"], (width, height), mode='ry_lhwxyz')
-            # right_target.add_field("box3d", boxes_3d)
-            # right_target = right_target.clip_to_image(remove_empty=True)
-            # target = {'left': left_target, 'right': right_target}
             return left_target
         else:
             fakebox = torch.tensor([[0, 0, 0, 0]])
@@ -211,7 +194,8 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
             annodir = os.path.join(self.root, f"object/training/label_{view}")
             anno_cache_path = os.path.join(annodir, 'annotations.pkl')
             if os.path.exists(anno_cache_path):
-                annotations = pickle.load(open(anno_cache_path, 'rb'))
+                with open(anno_cache_path, 'rb') as f:
+                    annotations = pickle.load(f)
             else:
                 print('generating', anno_cache_path)
                 annotations = []
@@ -289,7 +273,8 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         annodir = os.path.join(self.root, f"object/training/label_2")
         truncations_occluded_cache_path = os.path.join(annodir, 'truncations_occluded.pkl')
         if os.path.exists(truncations_occluded_cache_path):
-            truncations_list, occluded_list = pickle.load(open(truncations_occluded_cache_path, 'rb'))
+            with open(truncations_occluded_cache_path, 'rb') as f:
+                truncations_list, occluded_list = pickle.load(f)
         else:
             truncations_list, occluded_list = [], []
             print('generating', truncations_occluded_cache_path)
@@ -408,39 +393,6 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
             height = imginfo['height']
             disp = DisparityMap(np.ones((height, width)))
         return disp
-
-    def get_shape(self, index):
-        # raise NotImplementedError()
-        imgid = self.ids[index]
-        # split = 'training' if self.split != 'test' else 'test'
-        split = 'training' if not is_testing_split(self.split) else 'testing'
-        path = os.path.join(self.root, 'object', split,
-                            self.shape_prior_base, 'shape_prior_results_bin_z/',
-                            imgid + '.bin')
-        z = np.fromfile(path, dtype=np.float64)
-        z = z.reshape((-1, 5))
-        z = torch.from_numpy(z).float()
-        return z
-
-    def get_mesh_iou(self, index):
-        imgid = self.ids[index]
-        meshiou = torch.tensor(self.meshious[int(imgid)]).reshape(-1, 1)
-        return meshiou
-
-    def prepare_mesh_iou(self):
-        # split = 'training' if self.split != 'test' else 'testing'
-        split = 'training' if not is_testing_split(self.split) else 'testing'
-        if split == 'testing':
-            return None
-        path = os.path.join(self.root, 'object', split,
-                            self.shape_prior_base, 'meshiou/meshiou.pkl')
-        if os.path.exists(path):
-            meshious = pickle.load(open(path, 'rb'))
-        else:
-            print('no meshiou found.')
-            meshious = None
-
-        return meshious
 
     def get_calibration(self, index):
         imgid = self.ids[index]

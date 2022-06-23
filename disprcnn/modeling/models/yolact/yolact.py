@@ -93,9 +93,6 @@ class Yolact(nn.Module):
             self.init_weights(self.cfg.pretrained_backbone)
         self.freeze_bn(True)
 
-        if self.cfg.track_head.on:
-            self.track_head = None
-
     def init_weights(self, backbone_path):
         """ Initialize weights for training. """
         # Initialize the backbone with the pretrained weights.
@@ -161,8 +158,7 @@ class Yolact(nn.Module):
                 module.weight.requires_grad = enable
                 module.bias.requires_grad = enable
 
-    def forward(self, dps):
-        """ The input should be of size [batch_size, 3, img_h, img_w] """
+    def forward(self, dps, return_features=False):
         x = dps['image']
         _, _, img_h, img_w = x.size()
         _tmp_img_h = img_h
@@ -176,48 +172,22 @@ class Yolact(nn.Module):
             outs = [outs[i] for i in self.cfg.backbone.selected_layers]
             outs = self.fpn(outs)
 
-        proto_out = None
-        if self.cfg.mask_type == 1 and self.cfg.eval_mask_branch:
-            proto_x = x if self.proto_src is None else outs[self.proto_src]
+        proto_x = x if self.proto_src is None else outs[self.proto_src]
 
-            if self.num_grids > 0:
-                grids = self.grid.repeat(proto_x.size(0), 1, 1, 1)
-                proto_x = torch.cat([proto_x, grids], dim=1)
+        if self.num_grids > 0:
+            grids = self.grid.repeat(proto_x.size(0), 1, 1, 1)
+            proto_x = torch.cat([proto_x, grids], dim=1)
 
-            proto_out = self.proto_net(proto_x)
-            proto_out = F.relu(proto_out, inplace=True)
+        proto_out = self.proto_net(proto_x)
+        proto_out = F.relu(proto_out, inplace=True)
 
-            if self.cfg.mask_proto_prototypes_as_features:
-                # Clone here because we don't want to permute this, though idk if contiguous makes this unnecessary
-                proto_downsampled = proto_out.clone()
-
-                if self.cfg.mask_proto_prototypes_as_features_no_grad:
-                    proto_downsampled = proto_out.detach()
-
-            # Move the features last so the multiplication is easy
-            proto_out = proto_out.permute(0, 2, 3, 1).contiguous()
-
-            if self.cfg.mask_proto_bias:
-                bias_shape = [x for x in proto_out.size()]
-                bias_shape[-1] = 1
-                proto_out = torch.cat([proto_out, torch.ones(*bias_shape)], -1)
+        # Move the features last so the multiplication is easy
+        proto_out = proto_out.permute(0, 2, 3, 1).contiguous()
 
         pred_outs = {'loc': [], 'conf': [], 'mask': [], 'priors': []}
 
-        if self.cfg.use_mask_scoring:
-            pred_outs['score'] = []
-
-        if self.cfg.use_instance_coeff:
-            pred_outs['inst'] = []
-
         for idx, pred_layer in zip(self.selected_layers, self.prediction_layers):
             pred_x = outs[idx]
-
-            if self.cfg.mask_type == 1 and self.cfg.mask_proto_prototypes_as_features:
-                # Scale the prototypes down to the current prediction layer's size and add it as inputs
-                proto_downsampled = F.interpolate(proto_downsampled, size=outs[idx].size()[2:], mode='bilinear',
-                                                  align_corners=False)
-                pred_x = torch.cat([pred_x, proto_downsampled], dim=1)
 
             # A hack for the way dataparallel works
             if self.cfg.share_prediction_module and pred_layer is not self.prediction_layers[0]:
@@ -261,7 +231,6 @@ class Yolact(nn.Module):
                 else:
                     pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
             else:
-
                 if self.cfg.use_objectness_score:
                     objectness = torch.sigmoid(pred_outs['conf'][:, :, 0])
                     pred_outs['conf'][:, :, 1:] = (objectness > 0.10)[..., None] \
@@ -269,7 +238,10 @@ class Yolact(nn.Module):
                 else:
                     pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
 
-            return self.detect(pred_outs, self)
+            rets = self.detect(pred_outs, self)
+            if return_features:
+                rets['features'] = outs
+            return rets
 
 
 class YolactWrapper(nn.Module):

@@ -25,6 +25,7 @@ class YolactVisualizer:
     def __call__(self, *args, **kwargs):
         vis_dir = osp.join(self.total_cfg.output_dir, 'visualization', self.total_cfg.datasets.test)
         os.makedirs(vis_dir, exist_ok=True)
+        os.system(f'rm {vis_dir}/*png')
         outputs, trainer = args
         ds = trainer.valid_dl.dataset
         for i in trange(len(outputs)):

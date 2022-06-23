@@ -5,8 +5,8 @@ model:
     class_names: [ 'car' ]
 datasets:
   train: ("kittikins_train",)
-  test: "kittikins_val"
-#  test: "kittikins_valmini"
+  #  test: "kittikins_val"
+  test: "kittikins_valmini"
 solver:
   trainer: base
   batch_size: 8

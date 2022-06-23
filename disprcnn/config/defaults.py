@@ -119,8 +119,9 @@ _C.model.yolact.fpn.relu_downsample_layers = False
 _C.model.yolact.fpn.relu_pred_layers = True
 _C.model.yolact.fpn.use_conv_downsample = True
 
-_C.model.yolact.track_head = CN()
-_C.model.yolact.track_head.on = False
+_C.model.yolact_tracking = CN()
+_C.model.yolact_tracking.pretrained_yolact = ''
+_C.model.yolact_tracking.head = CN()
 
 _C.dataset = CN()
 _C.dataset.kitti = CN()

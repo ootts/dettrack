@@ -81,5 +81,6 @@ test:
   batch_size: 2
 
 dataloader:
-  collator: DetectionBatchCollator
+  #  collator: DetectionBatchCollator
+  collator: ExtendedBatchCollator
   num_workers: 4

@@ -1,6 +1,7 @@
 import collections
 
 import torch
+from disprcnn.structures.bounding_box import BoxList
 from torch._six import string_classes
 from torch.utils.data._utils.collate import np_str_obj_array_pattern, default_collate_err_msg_format
 
@@ -49,7 +50,7 @@ def extended_collate(batch):
             raise RuntimeError('each element in list of batch should be of equal size')
         transposed = zip(*batch)
         return [extended_collate(samples) for samples in transposed]
-    elif isinstance(elem, (Box3DList, GeBox3DList)):
+    elif isinstance(elem, (BoxList, Box3DList, GeBox3DList)):
         return batch
     raise TypeError(default_collate_err_msg_format.format(elem_type))
 

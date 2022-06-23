@@ -254,8 +254,6 @@ class YolactWrapper(nn.Module):
 
     def forward(self, dps):
         outputs = self.model(dps)
-        targets = dps['targets']
-        masks = dps['masks']
         num_crowds = dps['num_crowds']
         if not self.training:
             if self.total_cfg.dbg:
@@ -268,6 +266,9 @@ class YolactWrapper(nn.Module):
                 o['detection']['index'] = idx
             losses = {}
         else:
+            targets = [torch.cat([boxlist.bbox, boxlist.get_field('labels').reshape(-1, 1)
+                                  ], dim=1) for boxlist in dps['target']]
+            masks = [boxlist.get_field('masks').float() for boxlist in dps['target']]
             losses = self.criterion(outputs, targets, masks, num_crowds, self.model.mask_dim)
         return outputs, losses
 
@@ -284,14 +285,10 @@ class YolactWrapper(nn.Module):
             img_gpu = img / 255.0
             h, w, _ = img.shape
 
-        # save = cfg.rescore_bbox
-        # rescore_bbox = True
         t = postprocess(dets_out, w, h, visualize_lincomb=False,
                         crop_masks=True,
                         score_threshold=self.cfg.score_threshold)
-        # cfg.rescore_bbox = save
 
-        # with timer.env('Copy'):
         idx = t[1].argsort(0, descending=True)[:self.cfg.top_k]
 
         if self.cfg.eval_mask_branch:
@@ -320,7 +317,6 @@ class YolactWrapper(nn.Module):
                 color = (color[2], color[1], color[0])
             if on_gpu is not None:
                 color = torch.Tensor(color).to(on_gpu).float() / 255.
-                # color_cache[on_gpu][color_idx] = color
             return color
 
         # First, draw the masks on the GPU where we can do it really fast
@@ -357,30 +353,27 @@ class YolactWrapper(nn.Module):
         if num_dets_to_consider == 0:
             return img_numpy
 
-        if True:
-            for j in reversed(range(num_dets_to_consider)):
-                x1, y1, x2, y2 = boxes[j, :]
-                color = get_color(j)
-                score = scores[j]
+        for j in reversed(range(num_dets_to_consider)):
+            x1, y1, x2, y2 = boxes[j, :]
+            color = get_color(j)
+            score = scores[j]
 
-                # if args.display_bboxes:
-                cv2.rectangle(img_numpy, (x1, y1), (x2, y2), color, 1)
+            cv2.rectangle(img_numpy, (x1, y1), (x2, y2), color, 1)
 
-                # if args.display_text:
-                _class = self.cfg.class_names[classes[j]]
-                text_str = '%s: %.2f' % (_class, score)
+            _class = self.cfg.class_names[classes[j]]
+            text_str = '%s: %.2f' % (_class, score)
 
-                font_face = cv2.FONT_HERSHEY_DUPLEX
-                font_scale = 0.6
-                font_thickness = 1
+            font_face = cv2.FONT_HERSHEY_DUPLEX
+            font_scale = 0.6
+            font_thickness = 1
 
-                text_w, text_h = cv2.getTextSize(text_str, font_face, font_scale, font_thickness)[0]
+            text_w, text_h = cv2.getTextSize(text_str, font_face, font_scale, font_thickness)[0]
 
-                text_pt = (x1, y1 - 3)
-                text_color = [255, 255, 255]
+            text_pt = (x1, y1 - 3)
+            text_color = [255, 255, 255]
 
-                cv2.rectangle(img_numpy, (x1, y1), (x1 + text_w, y1 - text_h - 4), color, -1)
-                cv2.putText(img_numpy, text_str, text_pt, font_face, font_scale, text_color, font_thickness,
-                            cv2.LINE_AA)
+            cv2.rectangle(img_numpy, (x1, y1), (x1 + text_w, y1 - text_h - 4), color, -1)
+            cv2.putText(img_numpy, text_str, text_pt, font_face, font_scale, text_color, font_thickness,
+                        cv2.LINE_AA)
 
         return img_numpy

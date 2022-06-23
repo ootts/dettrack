@@ -122,10 +122,13 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
                 else:
                     return self.__getitem__(random.randint(0, len(self.ids) - 1))
 
+        targets = BoxList(target[:, :4], (1, 1))
+        targets.add_field("labels", torch.from_numpy(target[:, 4]))
+        targets.add_field("masks", torch.from_numpy(masks).float())
+
         dps = {
-            'image': torch.from_numpy(img).permute(2, 0, 1),
-            'target': target,
-            'masks': masks,
+            "image": torch.from_numpy(img).permute(2, 0, 1),
+            "target": targets,
             'height': height,
             'width': width,
             'num_crowds': num_crowds,

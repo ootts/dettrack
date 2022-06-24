@@ -121,7 +121,14 @@ _C.model.yolact.fpn.use_conv_downsample = True
 
 _C.model.yolact_tracking = CN()
 _C.model.yolact_tracking.pretrained_yolact = ''
-_C.model.yolact_tracking.head = CN()
+_C.model.yolact_tracking.track_head = CN()
+_C.model.yolact_tracking.track_head.in_channels = 256
+_C.model.yolact_tracking.track_head.roi_feat_size = 7
+_C.model.yolact_tracking.track_head.match_coeff = [1.0, 2.0, 10]
+_C.model.yolact_tracking.track_head.bbox_dummy_iou = 0
+_C.model.yolact_tracking.track_head.num_fcs = 2
+_C.model.yolact_tracking.track_head.fc_out_channels = 1024
+_C.model.yolact_tracking.track_head.dynamic = True
 
 _C.dataset = CN()
 _C.dataset.kitti = CN()

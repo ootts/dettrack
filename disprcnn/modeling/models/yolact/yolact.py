@@ -240,7 +240,7 @@ class Yolact(nn.Module):
 
             rets = self.detect(pred_outs, self)
             if return_features:
-                rets['features'] = outs
+                rets = rets, outs
             return rets
 
 
@@ -254,21 +254,21 @@ class YolactWrapper(nn.Module):
 
     def forward(self, dps):
         outputs = self.model(dps)
-        num_crowds = dps['num_crowds']
         if not self.training:
             if self.total_cfg.dbg:
                 img_numpy = self.prep_display(outputs, dps['image'][0], dps['height'][0].item(), dps['width'][0].item())
                 show(img_numpy)
                 print()
-            for o, idx in zip(outputs, dps['index'].tolist()):
-                if o['detection'] is None:
-                    o['detection'] = {}
-                o['detection']['index'] = idx
+            # for o, idx in zip(outputs, dps['index'].tolist()):
+            # if o['detection'] is None:
+            #     o['detection'] = {}
+            # o['detection']['index'] = idx
             losses = {}
         else:
             targets = [torch.cat([boxlist.bbox, boxlist.get_field('labels').reshape(-1, 1)
                                   ], dim=1) for boxlist in dps['target']]
             masks = [boxlist.get_field('masks').float() for boxlist in dps['target']]
+            num_crowds = dps['num_crowds']
             losses = self.criterion(outputs, targets, masks, num_crowds, self.model.mask_dim)
         return outputs, losses
 

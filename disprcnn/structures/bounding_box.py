@@ -1,9 +1,13 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import torch
 import cv2
 import numpy as np
 
 # transpose
+from disprcnn.utils import cv2_util
+
 FLIP_LEFT_RIGHT = 0
 FLIP_TOP_BOTTOM = 1
 
@@ -477,6 +481,42 @@ class BoxList(object):
         s += "image_height={}, ".format(self.size[1])
         s += "mode={})".format(self.mode)
         return s
+
+    def plot(self, img=None, show=False, **kwargs):
+        import matplotlib.pyplot as plt
+        from matplotlib import colors as mcolors
+        if img is not None:
+            plt.imshow(img)
+        colors = list(mcolors.BASE_COLORS.keys())
+        for i, box in enumerate(self.convert('xywh').bbox.tolist()):
+            x, y, w, h = box
+            c = colors[i % len(colors)]
+            plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c))
+            plt.text(x, y, f'{i}', color=c, **kwargs)
+            if self.has_field('scores'):
+                plt.text(x, y, '%.2f' % self.get_field('scores').tolist()[i], **kwargs)
+        if self.has_field('mask'):
+            masks = self.get_field('mask')
+            from disprcnn.modeling.roi_heads.mask_head.inference import Masker
+            masks = Masker()([masks], [self])[0].squeeze(1).cpu().byte().numpy()
+            for m in masks:
+                contour, hierarchy = cv2_util.findContours(
+                    m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
+                )
+                for c in contour:
+                    c = c.squeeze(1)
+                    plt.gca().add_patch(plt.Polygon(c, fill=False, **kwargs))
+        elif self.has_field('masks'):
+            masks = self.get_field('masks').cpu().byte().numpy()
+            for i, m in enumerate(masks):
+                contour, hierarchy = cv2_util.findContours(
+                    m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
+                )
+                for c in contour:
+                    c = c.squeeze(1)
+                    plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[i % len(colors)]))
+        if show:
+            plt.show()
 
 
 if __name__ == "__main__":

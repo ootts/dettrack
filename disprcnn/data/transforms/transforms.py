@@ -398,7 +398,7 @@ class Resize(object):
         self.discard_box_height = discard_box_height
 
     def __call__(self, dps):
-        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+        image = dps['image']
         img_h, img_w, _ = image.shape
 
         if self.preserve_aspect_ratio:
@@ -408,9 +408,9 @@ class Resize(object):
 
         image = cv2.resize(image, (width, height))
 
-        if self.resize_gt:
+        if self.resize_gt and 'masks' in dps:
             # Act like each object is a color channel
-            masks = masks.transpose((1, 2, 0))
+            masks = dps['masks'].transpose((1, 2, 0))
             masks = cv2.resize(masks, (width, height))
 
             # OpenCV resizes a (w,h,1) array to (s,s), so fix that
@@ -418,24 +418,22 @@ class Resize(object):
                 masks = np.expand_dims(masks, 0)
             else:
                 masks = masks.transpose((2, 0, 1))
-
+            dps['masks'] = masks
             # Scale bounding boxes (which are currently absolute coordinates)
-            boxes[:, [0, 2]] *= (width / img_w)
-            boxes[:, [1, 3]] *= (height / img_h)
+            if 'boxes' in dps:
+                dps['boxes'][:, [0, 2]] *= (width / img_w)
+                dps['boxes'][:, [1, 3]] *= (height / img_h)
+        if 'boxes' in dps:
+            # Discard boxes that are smaller than we'd like
+            w = dps['boxes'][:, 2] - dps['boxes'][:, 0]
+            h = dps['boxes'][:, 3] - dps['boxes'][:, 1]
 
-        # Discard boxes that are smaller than we'd like
-        w = boxes[:, 2] - boxes[:, 0]
-        h = boxes[:, 3] - boxes[:, 1]
-
-        keep = (w > self.discard_box_width) * (h > self.discard_box_height)
-        masks = masks[keep]
-        boxes = boxes[keep]
-        labels['labels'] = labels['labels'][keep]
-        labels['num_crowds'] = (labels['labels'] < 0).sum()
+            keep = (w > self.discard_box_width) * (h > self.discard_box_height)
+            dps['masks'] = dps['masks'][keep]
+            dps['boxes'] = dps['boxes'][keep]
+            dps['labels']['labels'] = dps['labels']['labels'][keep]
+            dps['labels']['num_crowds'] = (dps['labels']['labels'] < 0).sum()
         dps['image'] = image
-        dps['masks'] = masks
-        dps['boxes'] = boxes
-        dps['labels'] = labels
         return dps
 
 
@@ -627,7 +625,7 @@ class BackboneTransform(object):
         self.channel_permutation = [self.channel_map[c] for c in channel_order]
 
     def __call__(self, dps):
-        image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
+        image = dps['image']
 
         image = image.astype(np.float32)
 
@@ -641,7 +639,4 @@ class BackboneTransform(object):
         image = image[:, :, self.channel_permutation]
         image = image.astype(np.float32)
         dps['image'] = image
-        dps['masks'] = masks
-        dps['boxes'] = boxes
-        dps['labels'] = labels
         return dps

@@ -1,0 +1,55 @@
+model:
+  meta_architecture: "YolactTracking"
+  yolact:
+    num_classes: 2
+    class_names: [ 'car' ]
+  yolact_tracking:
+    pretrained_yolact: "models/yolact/kitti/resnet50/model_iteration_277500.pth"
+datasets:
+  train: ("kittitracking_train",)
+  #  test: "kittitracking_val"
+  test: "kittitracking_valmini"
+solver:
+  trainer: base
+  batch_size: 8
+  max_lr: 0.001
+  num_epochs: 1500
+  optimizer: SGD
+  scheduler: OneCycleScheduler
+  bias_lr_factor: 1
+  weight_decay: 0.0005
+  weight_decay_bias: 0.0005
+  save_every: True
+  save_mode: epoch
+  save_freq: 1
+  dist:
+    sampler:
+      shuffle: True
+input:
+  shuffle: True
+  transforms:
+    - name: ConvertFromInts
+    - name: Resize
+      max_size: 550
+      preserve_aspect_ratio: False
+      discard_box_width: 0.007272727272727273
+      discard_box_height: 0.007272727272727273
+      resize_gt: False
+    - name: BackboneTransform
+      normalize: True
+      mean: [ 103.94, 116.78, 123.68 ]
+      std: [ 57.38, 57.12, 58.40 ]
+      subtract_means: False
+      to_float: False
+      in_channel_order: 'BGR'
+      channel_order: 'RGB'
+
+test:
+  do_visualization: True
+  visualizer: yolacttracking
+  evaluators: [ ]
+  batch_size: 2
+
+dataloader:
+  collator: ExtendedBatchCollator
+  num_workers: 4

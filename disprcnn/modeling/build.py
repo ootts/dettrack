@@ -1,8 +1,10 @@
 import loguru
 
 from disprcnn.modeling.models.yolact.yolact import YolactWrapper
+from disprcnn.modeling.models.yolact.yolact_tracking import YolactTracking
 
 _META_ARCHITECTURES = {'Yolact': YolactWrapper,
+                       'YolactTracking': YolactTracking
                        }
 
 

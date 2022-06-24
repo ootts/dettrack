@@ -106,18 +106,18 @@ class TrackHead(nn.Module):
         n_total = 0
         batch_size = len(ids)
         for score, cur_ids, cur_weights in zip(match_score, ids, id_weights):
-            valid_idx = torch.nonzero(cur_weights).squeeze()
-            if len(valid_idx.size()) == 0: continue
+            valid_idx = torch.nonzero(cur_weights).squeeze(1)
+            if valid_idx.numel() == 0: continue
             n_valid = valid_idx.size(0)
             n_total += n_valid
             loss_match += weighted_cross_entropy(
                 score, cur_ids, cur_weights, reduce=reduce)
-            # match_acc += accuracy(torch.index_select(score, 0, valid_idx),
-            #                       torch.index_select(cur_ids, 0, valid_idx)) * n_valid
+            match_acc += accuracy(torch.index_select(score, 0, valid_idx),
+                                  torch.index_select(cur_ids, 0, valid_idx)) * n_valid
         losses['loss_match'] = loss_match / n
-        # if n_total > 0:
-        #     losses['match_acc'] = match_acc / n_total
-        return losses
+        if n_total > 0:
+            match_acc = match_acc / n_total
+        return losses['loss_match'], match_acc
 
 
 class YolactTracking(nn.Module):
@@ -136,7 +136,7 @@ class YolactTracking(nn.Module):
         self.dbg = cfg.dbg is True
 
     def forward(self, dps):
-        evaltime = EvalTime()
+        evaltime = EvalTime(disable=True)
         ##############  ↓ Step : forward yolact for each frame  ↓  ##############
         evaltime('')
         assert self.yolact.training is False
@@ -162,16 +162,18 @@ class YolactTracking(nn.Module):
         ##############  ↓ Step : make gt and compute loss  ↓  ##############
         ids, id_weights = self.prepare_targets(preds0, preds1, dps)
         evaltime('prepare targets')
-        loss_dict = self.track_head.loss(match_score, ids, id_weights)
+        loss_match, acc = self.track_head.loss(match_score, ids, id_weights)
+        output = {'metrics': {'acc': acc}}
+        loss_dict = {'loss_match': loss_match}
         evaltime('loss')
-        return dps, loss_dict
+        return output, loss_dict
 
     def decode_yolact_preds(self, preds, dps):
         img = dps['image0'][0]
         _, h, w = img.shape
         boxes = []
         for pred in preds:
-            if 'box' in pred['detection']:
+            if pred['detection'] is not None:
                 bbox = pred['detection']['box']
                 bbox[:, 0] *= w
                 bbox[:, 1] *= h
@@ -190,23 +192,30 @@ class YolactTracking(nn.Module):
         return roi_features
 
     def prepare_targets(self, preds0, preds1, dps):
-        evaltime = EvalTime()
+        evaltime = EvalTime(disable=True)
         targets0 = dps['target0']
         targets1 = dps['target1']
         ids, id_weights = [], []
         assert len(preds0) == len(targets0)
         assert len(preds1) == len(targets1)
         for i in range(len(preds1)):
+            evaltime('')
             if self.dbg: img1 = untsfm(dps['image1'][i], dps['width'][i].item(), dps['height'][i].item())
             if self.dbg: img0 = untsfm(dps['image0'][i], dps['width'][i].item(), dps['height'][i].item())
             pred1 = preds1[i]
             target1 = targets1[i]
             pred1 = pred1.resize(target1.size)
+            pred0 = preds0[i].resize(target1.size)
+            if len(pred0) == 0 or len(pred1) == 0:
+                ids.append(torch.empty((0), dtype=torch.long, device='cuda'))
+                id_weights.append(torch.empty((0), dtype=torch.float, device='cuda'))
+                continue
             if self.dbg: pred1.plot(img=img1, show=True)
             iou = boxlist_iou(pred1, target1)
             maxiou, idxs = iou.max(1)
             valid = maxiou > 0.7
             matched_targets = target1[idxs]
+            evaltime('pred1 and tgt1')
             if self.dbg: matched_targets.plot(img=img1, show=True)
             trackids1 = matched_targets.get_field('trackids').tolist()
             target0 = targets0[i]
@@ -219,8 +228,8 @@ class YolactTracking(nn.Module):
                     selected_idx0.append(0)
                     valid[j] = False
             matched_target0 = target0[selected_idx0]
+            evaltime('tgt1 and tgt0')
             if self.dbg: matched_target0.plot(img=img0, show=True)
-            pred0 = preds0[i].resize(matched_target0.size)
             iou = boxlist_iou(matched_target0, pred0)
             maxiou, idxs = iou.max(1)
             valid = valid & (maxiou > 0.7)
@@ -228,6 +237,7 @@ class YolactTracking(nn.Module):
             if self.dbg: pred0.plot(img=img0, show=True)
             idxs = idxs + 1
             idxs[~valid] = 0
+            evaltime('tgt0 and pred0')
             ids.append(idxs)
             id_weights.append((idxs > 0).float())
         return ids, id_weights

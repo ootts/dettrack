@@ -52,23 +52,20 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         self.infos = self.read_info()
         if ds_len > 0:
             self.pairs = self.pairs[:ds_len]
-
-        self.pairs = self.filter_empty()
+        if self.split == 'train':
+            self.pairs = self.filter_empty()
 
         print('using dataset of length', self.__len__())
 
     def __getitem__(self, index):
-        # print('!!!!')
-        # index = 1205
-        seq, imgid0, imgid1 = self.pairs[index]
-        img0 = self.get_image(seq, imgid0)
-        img1 = self.get_image(seq, imgid1)
-        height, width, _ = img0.shape
-        # num_crowds = 0
+        if self.split == 'train':
+            seq, imgid0, imgid1 = self.pairs[index]
+            img0 = self.get_image(seq, imgid0)
+            img1 = self.get_image(seq, imgid1)
+            height, width, _ = img0.shape
 
-        targets0 = self.get_ground_truth(seq, imgid0)
-        targets1 = self.get_ground_truth(seq, imgid1)
-        if not is_testing_split(self.split):
+            targets0 = self.get_ground_truth(seq, imgid0)
+            targets1 = self.get_ground_truth(seq, imgid1)
             targets0 = targets0[targets0.get_field('labels') == 1]  # remove not cars
             targets1 = targets1[targets1.get_field('labels') == 1]  # remove not cars
 
@@ -77,17 +74,39 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
             tsfmed_img0 = self.transforms({'image': img0})['image']
             tsfmed_img1 = self.transforms({'image': img1})['image']
 
-        dps = {
-            # "image0": torch.from_numpy(img0).permute(2, 0, 1),
-            # "image1": torch.from_numpy(img1).permute(2, 0, 1),
-            'image0': torch.from_numpy(tsfmed_img0).permute(2, 0, 1),
-            'image1': torch.from_numpy(tsfmed_img1).permute(2, 0, 1),
-            "target0": targets0,
-            "target1": targets1,
-            'height': height,
-            'width': width,
-            'index': index
-        }
+            dps = {
+                'image0': torch.from_numpy(tsfmed_img0).permute(2, 0, 1),
+                'image1': torch.from_numpy(tsfmed_img1).permute(2, 0, 1),
+                "target0": targets0,
+                "target1": targets1,
+                'height': height,
+                'width': width,
+                'index': index
+            }
+        elif self.split == 'val':
+            seq, imgid = self.pairs[index]
+            img = self.get_image(seq, imgid)
+            height, width, _ = img.shape
+
+            targets = self.get_ground_truth(seq, imgid)
+            targets = targets[targets.get_field('labels') == 1]  # remove not cars
+
+            assert self.transforms is not None
+
+            tsfmed_img = self.transforms({'image': img})['image']
+
+            dps = {
+                'image': torch.from_numpy(tsfmed_img).permute(2, 0, 1),
+                "target": targets,
+                'height': height,
+                'width': width,
+                'index': index,
+                'seq': seq,
+                'imgid': imgid
+            }
+        else:
+            raise NotImplementedError()
+
         return dps
 
     def filter_empty(self):
@@ -105,7 +124,12 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         split = 'training' if not is_testing_split(self.split) else 'testing'
         for seq in self.seqs:
             nimgs = len(os.listdir(osp.join(self.root, 'tracking', split, 'image_02', f"{seq:04d}")))
-            pairs = list(zip([seq] * (nimgs - 1), range(0, nimgs - 1), range(1, nimgs)))
+            if self.split == 'train':
+                pairs = list(zip([seq] * (nimgs - 1), range(0, nimgs - 1), range(1, nimgs)))
+            elif self.split == 'val':
+                pairs = list(zip([seq] * nimgs, range(0, nimgs)))
+            else:
+                raise NotImplementedError()
             all_pairs.extend(pairs)
         return all_pairs
 
@@ -282,7 +306,7 @@ def is_testing_split(split):
 
 
 def main():
-    ds = KITTITrackingDataset(None, 'data/kitti', 'train', None, )
+    ds = KITTITrackingDataset(None, 'data/kitti', 'val', None, )
     d = ds[0]
 
 

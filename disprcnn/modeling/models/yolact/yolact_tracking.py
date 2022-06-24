@@ -1,10 +1,11 @@
+import torch.nn.functional as F
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from dl_ext.timer import EvalTime
 from torchvision.ops import RoIAlign
-
+from matplotlib import colors as mcolors
 from disprcnn.structures.bounding_box import BoxList
 
 from disprcnn.modeling.models.yolact.submodules import *
@@ -134,8 +135,10 @@ class YolactTracking(nn.Module):
                                    self.cfg.track_head.roi_feat_size), 69.0 / 550, 0)
         self.track_head = TrackHead(cfg)
         self.dbg = cfg.dbg is True
+        self.seq_id = -1
+        self.memory = None
 
-    def forward(self, dps):
+    def forward_train(self, dps):
         evaltime = EvalTime(disable=True)
         ##############  ↓ Step : forward yolact for each frame  ↓  ##############
         evaltime('')
@@ -143,8 +146,8 @@ class YolactTracking(nn.Module):
         with torch.no_grad():
             preds0, feat0 = self.yolact({'image': dps['image0']}, return_features=True)
             preds1, feat1 = self.yolact({'image': dps['image1']}, return_features=True)
-        preds0 = self.decode_yolact_preds(preds0, dps)
-        preds1 = self.decode_yolact_preds(preds1, dps)
+        preds0 = self.decode_yolact_preds(preds0, dps['image0'].shape[-2], dps['image0'].shape[-1])
+        preds1 = self.decode_yolact_preds(preds1, dps['image0'].shape[-2], dps['image0'].shape[-1])
         evaltime('pred bbox')
         ##############  ↓ Step : roi align features  ↓  ##############
         feat0 = feat0[0]
@@ -168,9 +171,72 @@ class YolactTracking(nn.Module):
         evaltime('loss')
         return output, loss_dict
 
-    def decode_yolact_preds(self, preds, dps):
-        img = dps['image0'][0]
-        _, h, w = img.shape
+    def forward_test(self, dps):
+        seqid = dps['seq']
+        assert seqid.shape[0] == 1  # batch size=1
+        seqid = seqid[0].item()
+        if seqid != self.seq_id:
+            # reset
+            self.seq_id = seqid
+            self.memory = torch.empty([0, 256, 7, 7], dtype=torch.float, device='cuda')  # todo: put in cfg
+        preds, feat = self.yolact({'image': dps['image']}, return_features=True)
+        preds = self.decode_yolact_preds(preds, dps['image'].shape[-2], dps['image'].shape[-1])
+        feat = feat[0]
+        roi_features = self.extract_roi_features(preds, feat)
+        ref_x = self.memory
+        ref_x_n = [len(self.memory)]
+        x = roi_features
+        x_n = [len(a) for a in preds]
+        if len(self.memory) > 0:
+            match_score = self.track_head(x, ref_x, x_n, ref_x_n)[0]
+        else:
+            match_score = torch.empty([len(preds[0]), 0], dtype=torch.float, device='cuda')
+        ##############  ↓ Step : match  ↓  ##############
+        if match_score.numel() > 0:
+            match_score = F.softmax(match_score, dim=1)
+            max_score, idxs = match_score.max(1)
+            dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()
+            matched = max_score > 0.5  # todo: set hyper-parameter
+            matched = matched & dual
+        else:
+            matched = torch.full([len(preds[0])], False).cuda()
+        cur_trackids = torch.full([len(preds[0])], -1).long().cuda()
+        if matched.sum() > 0:
+            idxs = idxs - 1
+            cur_trackids[matched] = idxs[matched]
+            cur_feat = roi_features[matched]
+            self.memory[idxs[matched]] = cur_feat
+        unmatched = ~matched
+        if unmatched.sum() > 0:
+            new_tids = torch.arange(self.memory.shape[0], self.memory.shape[0] + unmatched.sum()).long().cuda()
+            cur_trackids[unmatched] = new_tids
+            self.memory = torch.cat([self.memory, roi_features[unmatched]], dim=0)
+        width, height = dps['width'][0].item(), dps['height'][0].item()
+        pred = preds[0].resize([width, height])
+        pred.add_field('trackids', cur_trackids)
+        if self.dbg:
+            img = untsfm(dps['image'][0], width, height)
+            plt.imshow(img)
+            colors = list(mcolors.BASE_COLORS.keys())
+            for i, box in enumerate(pred.convert('xywh').bbox.tolist()):
+                x, y, w, h = box
+                c = colors[i % len(colors)]
+                plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c, linewidth=2))
+                plt.text(x, y, f'{pred.get_field("trackids")[i]}', color=c, fontsize='x-large')
+            plt.show()
+        loss_dict = {}
+        output = {'bbox': pred}
+        return output, loss_dict
+
+    def forward(self, dps):
+        if self.training:
+            return self.forward_train(dps)
+        else:
+            return self.forward_test(dps)
+
+    def decode_yolact_preds(self, preds, h, w):
+        # img = dps['image0'][0]
+        # _, h, w = img.shape
         boxes = []
         for pred in preds:
             if pred['detection'] is not None:

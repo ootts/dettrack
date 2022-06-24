@@ -48,7 +48,7 @@ test:
   do_visualization: True
   visualizer: yolacttracking
   evaluators: [ ]
-  batch_size: 2
+  batch_size: 1
 
 dataloader:
   collator: ExtendedBatchCollator

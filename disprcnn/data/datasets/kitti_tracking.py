@@ -88,9 +88,9 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
             img = self.get_image(seq, imgid)
             height, width, _ = img.shape
 
-            targets = self.get_ground_truth(seq, imgid)
-            targets = targets[targets.get_field('labels') == 1]  # remove not cars
-
+            # targets = self.get_ground_truth(seq, imgid)
+            # targets = targets[targets.get_field('labels') == 1]  # remove not cars
+            targets = BoxList(torch.empty([0, 4]), (1, 1))
             assert self.transforms is not None
 
             tsfmed_img = self.transforms({'image': img})['image']

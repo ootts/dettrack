@@ -52,7 +52,8 @@ def get_kittitracking(name):
     ds_len = -1
     if split == 'valmini':
         split = 'val'
-        ds_len = 100
+        ds_len = 700
+        # ds_len = 10
     return dict(
         factory='KITTITrackingDataset',
         args={'root': 'data/kitti',

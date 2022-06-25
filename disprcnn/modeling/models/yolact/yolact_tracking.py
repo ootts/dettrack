@@ -187,10 +187,10 @@ class YolactTracking(nn.Module):
         ref_x_n = [len(self.memory)]
         x = roi_features
         x_n = [len(a) for a in preds]
-        if len(self.memory) > 0:
+        if len(self.memory) > 0 and x.numel() > 0:
             match_score = self.track_head(x, ref_x, x_n, ref_x_n)[0]
         else:
-            match_score = torch.empty([len(preds[0]), 0], dtype=torch.float, device='cuda')
+            match_score = torch.empty([len(preds[0]), len(self.memory)], dtype=torch.float, device='cuda')
         ##############  ↓ Step : match  ↓  ##############
         if match_score.numel() > 0:
             match_score = F.softmax(match_score, dim=1)
@@ -220,13 +220,13 @@ class YolactTracking(nn.Module):
             colors = list(mcolors.BASE_COLORS.keys())
             for i, box in enumerate(pred.convert('xywh').bbox.tolist()):
                 x, y, w, h = box
-                c = colors[i % len(colors)]
+                trackid = pred.get_field("trackids")[i]
+                c = colors[trackid % len(colors)]
                 plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c, linewidth=2))
-                plt.text(x, y, f'{pred.get_field("trackids")[i]}', color=c, fontsize='x-large')
+                plt.text(x, y, f'{trackid}', color=c, fontsize='x-large')
             plt.show()
         loss_dict = {}
-        output = {'bbox': pred}
-        return output, loss_dict
+        return pred, loss_dict
 
     def forward(self, dps):
         if self.training:

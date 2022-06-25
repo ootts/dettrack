@@ -122,6 +122,7 @@ _C.model.yolact.fpn.use_conv_downsample = True
 _C.model.yolact_tracking = CN()
 _C.model.yolact_tracking.pretrained_yolact = ''
 _C.model.yolact_tracking.fix_yolact = True
+# _C.model.yolact_tracking.nvis = 1000
 _C.model.yolact_tracking.track_head = CN()
 _C.model.yolact_tracking.track_head.in_channels = 256
 _C.model.yolact_tracking.track_head.roi_feat_size = 7

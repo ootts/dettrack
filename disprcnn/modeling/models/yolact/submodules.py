@@ -19,8 +19,8 @@ from disprcnn.modeling.models.yolact.utils.functions import make_net
 # torch.cuda.current_device()
 
 use_jit = torch.cuda.device_count() <= 1
-if not use_jit:
-    print('Multiple GPUs detected! Turning off JIT.')
+# if not use_jit:
+#     print('Multiple GPUs detected! Turning off JIT.')
 
 ScriptModuleWrapper = torch.jit.ScriptModule if use_jit else nn.Module
 script_method_wrapper = torch.jit.script_method if use_jit else lambda fn, _rcn=None: fn

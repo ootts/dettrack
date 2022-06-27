@@ -47,7 +47,7 @@ class PSMLoss(nn.Module):
             loss = 0.5 * loss1 + 0.7 * loss2 + loss3
         else:
             if mask.sum() == 0:
-                loss = 0
+                loss = mask.sum() * 0.0
             else:
                 loss = ((output - target).abs() * mask.float()).sum() / mask.sum()
         return loss

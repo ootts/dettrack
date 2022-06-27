@@ -88,7 +88,10 @@ def get_kittiroi(name):
     ds_len = -1
     if split == 'valmini':
         split = 'val'
-        ds_len = 100
+        ds_len = 12
+    if split == 'trainmini':
+        split = 'train'
+        ds_len = 12
     return dict(
         factory='KITTIRoiDatasetRA',
         args={'split': split,

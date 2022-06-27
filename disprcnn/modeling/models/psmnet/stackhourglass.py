@@ -208,7 +208,7 @@ class PSMNet(nn.Module):
             cost3 = torch.squeeze(cost3, 1)
             pred3 = F.softmax(cost3, dim=1)
             # if self.use_disparity_regression:
-            p3 = disparityregression(pred3, self.maxdisp, self.mindisp, self.single_modal_weight_average)
+            p3 = disparityregression(pred3, self.maxdisp, self.mindisp)
             # if not self.output_uncertainty:
             return p3
             # else:

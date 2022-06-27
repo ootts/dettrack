@@ -172,9 +172,10 @@ class BinaryMaskList(object):
 
     def _findContours(self):
         contours = []
-        masks = self.masks.detach().numpy()
+        masks = self.masks.detach().cpu().numpy()
         for mask in masks:
-            mask = cv2.UMat(mask)
+            # mask = cv2.UMat(mask)
+            mask = mask.astype(np.uint8)
             contour, hierarchy = cv2_util.findContours(
                 mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
             )
@@ -378,14 +379,14 @@ class PolygonList(object):
         if isinstance(polygons, (list, tuple)):
             if len(polygons) == 0:
                 polygons = [[[]]]
-            if isinstance(polygons[0], (list, tuple)):
-                assert isinstance(polygons[0][0], (list, tuple)), str(
-                    type(polygons[0][0])
-                )
-            else:
-                assert isinstance(polygons[0], PolygonInstance), str(
-                    type(polygons[0])
-                )
+            # if isinstance(polygons[0], (list, tuple)):
+            #     assert isinstance(polygons[0][0], (list, tuple)), str(
+            #         type(polygons[0][0])
+            #     )
+            # else:
+            #     assert isinstance(polygons[0], PolygonInstance), str(
+            #         type(polygons[0])
+            #     )
 
         elif isinstance(polygons, PolygonList):
             size = polygons.size

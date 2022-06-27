@@ -25,7 +25,6 @@ _C.model.yolact.backbone.use_square_anchors = True
 _C.model.yolact.pretrained_backbone = '/raid/linghao/project_data/yolact/weights/resnet50-19c8e357.pth'
 
 _C.model.yolact.mask_type = 1
-# _C.model.yolact.mask_dim = 1
 _C.model.yolact.mask_proto_use_grid = False
 _C.model.yolact.mask_proto_src = 0
 _C.model.yolact.mask_proto_bias = False
@@ -108,7 +107,7 @@ _C.model.yolact.class_names = ['person', 'bicycle', 'car', 'motorcycle', 'airpla
                                'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven',
                                'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
                                'scissors', 'teddy bear', 'hair drier', 'toothbrush']
-_C.model.yolact.nvis = 10
+_C.model.yolact.nvis = 100
 
 _C.model.yolact.fpn = CN()
 _C.model.yolact.fpn.interpolation_mode = 'bilinear'
@@ -122,7 +121,6 @@ _C.model.yolact.fpn.use_conv_downsample = True
 _C.model.yolact_tracking = CN()
 _C.model.yolact_tracking.pretrained_yolact = ''
 _C.model.yolact_tracking.fix_yolact = True
-# _C.model.yolact_tracking.nvis = 1000
 _C.model.yolact_tracking.track_head = CN()
 _C.model.yolact_tracking.track_head.in_channels = 256
 _C.model.yolact_tracking.track_head.roi_feat_size = 7
@@ -132,8 +130,41 @@ _C.model.yolact_tracking.track_head.num_fcs = 2
 _C.model.yolact_tracking.track_head.fc_out_channels = 1024
 _C.model.yolact_tracking.track_head.dynamic = True
 
+_C.model.idispnet = CN()
+_C.model.idispnet.maxdisp = 48
+_C.model.idispnet.mindisp = -48
+_C.model.idispnet.input_size = 224
+_C.model.idispnet.pretrained_model = 'models/PSMNet/pretrained_model_KITTI2015.tar'
+
+_C.model.idispnet.preprocess = CN()
+_C.model.idispnet.preprocess.output_dir = ''
+_C.model.idispnet.preprocess.prediction_template = ''
+_C.model.idispnet.preprocess.masker_thresh = 0.5
+_C.model.idispnet.preprocess.size = 224
+_C.model.idispnet.preprocess.resize_mode = 'inverse_bilinear'
+
+_C.model.drcnn = CN()
+_C.model.drcnn.yolact_on = True
+_C.model.drcnn.pretrained_yolact = ''
+_C.model.drcnn.fix_yolact = True
+_C.model.drcnn.ssim_coef = 0.0
+_C.model.drcnn.ssim_intercept = 0.0
+_C.model.drcnn.ssim_std = 0.0
+_C.model.drcnn.idispnet_on = False
+_C.model.drcnn.detector_3d_on = False
+
 _C.dataset = CN()
 _C.dataset.kitti = CN()
+_C.dataset.kitti_object = CN()
+_C.dataset.kitti_object.filter_empty = False
+_C.dataset.kitti_object.offline_2d_predictions_path = ''
+_C.dataset.kitti_object.shape_prior_base = 'vob'
+_C.dataset.kitti_object.remove_ignore = True
+
+_C.dataset.kittiroi = CN()
+_C.dataset.kittiroi.root = 'data/???'
+_C.dataset.kittiroi.maxdisp = 48
+_C.dataset.kittiroi.mindisp = -48
 
 _C.input = CN()
 _C.input.transforms = []

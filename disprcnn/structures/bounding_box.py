@@ -7,6 +7,7 @@ import numpy as np
 
 # transpose
 from disprcnn.utils import cv2_util
+from disprcnn.utils.pn_utils import to_array
 
 FLIP_LEFT_RIGHT = 0
 FLIP_TOP_BOTTOM = 1
@@ -127,7 +128,7 @@ class BoxList(object):
             bbox = BoxList(scaled_box, size, mode=self.mode)
             bbox._copy_map(self)
             for k, v in self.extra_fields.items():
-                if not isinstance(v, torch.Tensor):
+                if not isinstance(v, (torch.Tensor, int)):
                     v = v.resize(size, *args, **kwargs)
                 bbox.add_field(k, v)
             return bbox
@@ -250,9 +251,17 @@ class BoxList(object):
 
     def __getitem__(self, item):
         bbox = BoxList(self.bbox[item], self.size, self.mode)
-        bbox._copy_map(self)
+        # bbox._copy_map(self)
         for k, v in self.extra_fields.items():
-            bbox.add_field(k, v[item])
+            if isinstance(v, int):
+                bbox.add_field(k, v)
+            else:
+                bbox.add_field(k, v[item])
+        for k, v in self.PixelWise_map.items():
+            if hasattr(v, '__getitem__'):
+                bbox.add_map(k, v[item])
+            else:
+                bbox.add_map(k, v)
         return bbox
 
     def __len__(self):
@@ -486,7 +495,7 @@ class BoxList(object):
         import matplotlib.pyplot as plt
         from matplotlib import colors as mcolors
         if img is not None:
-            plt.imshow(img)
+            plt.imshow(to_array(img, dtype=np.uint8))
         colors = list(mcolors.BASE_COLORS.keys())
         for i, box in enumerate(self.convert('xywh').bbox.tolist()):
             x, y, w, h = box
@@ -515,8 +524,49 @@ class BoxList(object):
                 for c in contour:
                     c = c.squeeze(1)
                     plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[i % len(colors)]))
+        elif self.has_map("masks"):
+            masks = self.get_map('masks').convert('mask').get_mask_tensor().cpu().numpy().astype(np.uint8)
+            for i, m in enumerate(masks):
+                contour, hierarchy = cv2_util.findContours(
+                    m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
+                )
+                for c in contour:
+                    c = c.squeeze(1)
+                    plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[i % len(colors)]))
         if show:
             plt.show()
+
+    @property
+    def widths(self):
+        box = self.bbox
+        if self.mode == 'xyxy':
+            TO_REMOVE = 1
+            widths = box[:, 2] - box[:, 0] + TO_REMOVE
+        elif self.mode == 'xywh':
+            widths = bbox[:, 2]
+        else:
+            raise RuntimeError("Should not be here")
+        return widths
+
+    @property
+    def heights(self):
+        box = self.bbox
+        if self.mode == 'xyxy':
+            TO_REMOVE = 1
+            heights = box[:, 3] - box[:, 1] + TO_REMOVE
+        elif self.mode == 'xywh':
+            heights = bbox[:, 3]
+        else:
+            raise RuntimeError("Should not be here")
+        return heights
+
+    @property
+    def height(self):
+        return self.size[1]
+
+    @property
+    def width(self):
+        return self.size[0]
 
 
 if __name__ == "__main__":

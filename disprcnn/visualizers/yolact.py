@@ -1,3 +1,5 @@
+import numpy as np
+import imageio
 import pdb
 
 import cv2
@@ -25,9 +27,10 @@ class YolactVisualizer:
     def __call__(self, *args, **kwargs):
         vis_dir = osp.join(self.total_cfg.output_dir, 'visualization', self.total_cfg.datasets.test)
         os.makedirs(vis_dir, exist_ok=True)
-        os.system(f'rm {vis_dir}/*png')
+        os.system(f'rm {vis_dir}/*')
         outputs, trainer = args
         ds = trainer.valid_dl.dataset
+        imgs = []
         for i in trange(len(outputs)):
             if 0 < self.cfg.nvis < i: break
             dps = ds[i]
@@ -38,6 +41,14 @@ class YolactVisualizer:
             width = dps['width']
             img_numpy = self.prep_display([dets_out], img, height, width)
             Image.fromarray(img_numpy).save(osp.join(vis_dir, f'{imgid:06d}.png'))
+            imgs.append(img_numpy)
+        maxh = max([i.shape[0] for i in imgs])
+        maxw = max([i.shape[1] for i in imgs])
+        ims = np.zeros([len(imgs), maxh, maxw, 3], dtype=np.uint8)
+        for i in range(len(imgs)):
+            im = imgs[i]
+            ims[i, :im.shape[0], :im.shape[1], :] = im
+        imageio.mimwrite(osp.join(vis_dir, "video.mp4"), ims, fps=1)
 
     def prep_display(self, dets_out, img, h, w, undo_transform=True, class_color=False, mask_alpha=0.45, fps_str=''):
         """
@@ -51,7 +62,7 @@ class YolactVisualizer:
         else:
             img_gpu = img / 255.0
             h, w, _ = img.shape
-        if 'box' not in dets_out[0]['detection']:
+        if dets_out[0]['detection'] is None:
             return (img_gpu * 255).byte().cpu().numpy()
         t = postprocess(dets_out, w, h, visualize_lincomb=False,
                         crop_masks=True,

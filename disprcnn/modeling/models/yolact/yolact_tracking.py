@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from dl_ext.timer import EvalTime
+from dl_ext.timer import EvalTime, Timer
 from torchvision.ops import RoIAlign
 from matplotlib import colors as mcolors
 from disprcnn.structures.bounding_box import BoxList
@@ -64,15 +64,7 @@ class TrackHead(nn.Module):
                    + self.match_coeff[2] * label_delta
 
     def forward(self, x, ref_x, x_n, ref_x_n):
-        # x and ref_x are the grouped bbox features of current and reference frame
-        # x_n are the numbers of proposals in the current images in the mini-batch,
-        # ref_x_n are the numbers of ground truth bboxes in the reference images.
-        # here we compute a correlation matrix of x and ref_x
-        # we also add a all 0 column denote no matching
         assert len(x_n) == len(ref_x_n)
-        # if self.with_avg_pool:
-        #     x = self.avg_pool(x)
-        #     ref_x = self.avg_pool(ref_x)
         x = x.view(x.size(0), -1)
         ref_x = ref_x.view(ref_x.size(0), -1)
         for idx, fc in enumerate(self.fcs):
@@ -137,6 +129,7 @@ class YolactTracking(nn.Module):
         self.dbg = cfg.dbg is True
         self.seq_id = -1
         self.memory = None
+        self.evaltime = EvalTime(disable=not cfg.evaltime)
 
     def forward_train(self, dps):
         evaltime = EvalTime(disable=True)
@@ -179,8 +172,10 @@ class YolactTracking(nn.Module):
             # reset
             self.seq_id = seqid
             self.memory = torch.empty([0, 256, 7, 7], dtype=torch.float, device='cuda')  # todo: put in cfg
+        self.evaltime('begin')
         preds, feat = self.yolact({'image': dps['image']}, return_features=True)
         preds = self.decode_yolact_preds(preds, dps['image'].shape[-2], dps['image'].shape[-1])
+        self.evaltime('detect')
         feat = feat[0]
         roi_features = self.extract_roi_features(preds, feat)
         ref_x = self.memory
@@ -214,6 +209,7 @@ class YolactTracking(nn.Module):
         width, height = dps['width'][0].item(), dps['height'][0].item()
         pred = preds[0].resize([width, height])
         pred.add_field('trackids', cur_trackids)
+        self.evaltime('track')
         if self.dbg:
             img = untsfm(dps['image'][0], width, height)
             plt.imshow(img)

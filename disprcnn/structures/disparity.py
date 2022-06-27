@@ -1,3 +1,4 @@
+import warnings
 from typing import Union
 from warnings import warn
 
@@ -36,27 +37,35 @@ class DisparityMap:
     def height(self):
         return self.data.shape[0]
 
-    def resize(self, dst_size, use_max_pooling=False):
+    def resize(self, dst_size, mode=None, x1_minus_x1p=None):
         """
-        :param use_max_pooling:
         :param dst_size: (width, height)
         :return:
+        @param mode: bilinear,maxpooling,inverse_bilinear
         """
+        if mode is None:
+            warnings.warn('resize_mode is None! Specify it!')
+            mode = 'bilinear'
         if any(a < 0 for a in dst_size):
             warn('dst size < 0, size will not change.')
             return self.clone()
         dst_width, dst_height = map(round, dst_size)
-        if not use_max_pooling:
+        if mode == 'bilinear':
             dst_tensor = interpolate(self.data.clone()[None, None],
                                      (dst_height, dst_width),
                                      mode='bilinear',
                                      align_corners=True)[0, 0]
-        else:
+        elif mode == 'maxpooling':
             input = self.data.clone()[None, None, :, :]
             positive = (input > 0).float()
             negative = (input < 0).float()
             dst_tensor = F.adaptive_max_pool2d(input * positive, (dst_height, dst_width))[0, 0] - \
                          F.adaptive_max_pool2d(-input * negative, (dst_height, dst_width))[0, 0]
+        elif mode == 'inverse_bilinear':
+            dst_tensor = inverse_bilinear_interpolate_torch(self.data.clone() + x1_minus_x1p,
+                                                            (dst_height, dst_width)) - x1_minus_x1p
+        else:
+            raise NotImplementedError()
         dst_tensor = dst_tensor / self.width * dst_width
         dst = DisparityMap(dst_tensor)
         return dst
@@ -81,3 +90,17 @@ class DisparityMap:
         d = self.clone()
         d.data = d.data - other
         return d
+
+
+def inverse_bilinear_interpolate_torch(im_, dst_size):
+    """
+
+    @param im_: H,W
+    @param dst_size: int,int: height,width
+    @return:
+    """
+    dst_height, dst_width = dst_size
+    im = 1.0 / (im_ + 1e-9)
+    ans = interpolate(im[None, None], (dst_height, dst_width), mode='bilinear', align_corners=True)[0, 0]
+    ans = 1.0 / (ans + 1e-9)
+    return ans

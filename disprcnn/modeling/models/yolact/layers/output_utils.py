@@ -12,7 +12,7 @@ from .box_utils import crop, sanitize_coordinates
 
 
 def postprocess(det_output, w, h, batch_idx=0, interpolation_mode='bilinear',
-                visualize_lincomb=False, crop_masks=True, score_threshold=0):
+                visualize_lincomb=False, crop_masks=True, score_threshold=0, to_long=True):
     """
 import torch
     Postprocesses the output of Yolact on testing mode into a format that makes sense,
@@ -37,7 +37,7 @@ import torch
     dets = dets['detection']
 
     # if dets is None:
-    if 'box' not in dets:
+    if dets is None:
         return [torch.Tensor()] * 4  # Warning, this is 4 copies of the same thing
 
     if score_threshold > 0:
@@ -96,7 +96,8 @@ import torch
 
     boxes[:, 0], boxes[:, 2] = sanitize_coordinates(boxes[:, 0], boxes[:, 2], w, cast=False)
     boxes[:, 1], boxes[:, 3] = sanitize_coordinates(boxes[:, 1], boxes[:, 3], h, cast=False)
-    boxes = boxes.long()
+    if to_long:
+        boxes = boxes.long()
 
     # if cfg.mask_type == 0 and cfg.eval_mask_branch:
     #     # Upscale masks

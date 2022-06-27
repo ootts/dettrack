@@ -1,0 +1,12 @@
+model:
+  idispnet:
+    preprocess:
+      output_dir: 'data/vob_roi_ra'
+      prediction_template: 'models/drcnn/kitti_object/resnet50/inference/kittiobj_%s/predictions.pth'
+datasets:
+  train: ("kittiobj_train",)
+  #  test: "kittiobj_train"
+  test: "kittiobj_val"
+dataset:
+  kitti_object:
+    filter_empty: False

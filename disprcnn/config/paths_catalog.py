@@ -19,6 +19,10 @@ class DatasetCatalog(object):
             return get_kittikins(name)
         elif name.startswith("kittitracking"):
             return get_kittitracking(name)
+        elif name.startswith("kittiobj"):
+            return get_kittiobj(name)
+        elif name.startswith("kittiroi"):
+            return get_kittiroi(name)
         raise RuntimeError("Dataset not available: {}".format(name))
 
 
@@ -58,6 +62,36 @@ def get_kittitracking(name):
         factory='KITTITrackingDataset',
         args={'root': 'data/kitti',
               'split': split,
+              'ds_len': ds_len
+              }
+    )
+
+
+def get_kittiobj(name):
+    split = name.split("_")[1]
+    ds_len = -1
+    if split == 'valmini':
+        split = 'val'
+        ds_len = 100
+        # ds_len = 10
+    return dict(
+        factory='KITTIObjectDataset',
+        args={'root': 'data/kitti',
+              'split': split,
+              'ds_len': ds_len
+              }
+    )
+
+
+def get_kittiroi(name):
+    split = name.split("_")[1]
+    ds_len = -1
+    if split == 'valmini':
+        split = 'val'
+        ds_len = 100
+    return dict(
+        factory='KITTIRoiDatasetRA',
+        args={'split': split,
               'ds_len': ds_len
               }
     )

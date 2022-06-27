@@ -1,0 +1,16 @@
+#model:
+#  idispnet:
+
+datasets:
+  train: ("kittiroi_train",)
+  test: "kittiroi_val"
+dataset:
+  kittiroi:
+    root: 'data/vob_roi_ra'
+solver:
+  max_lr: 0.01
+  batch_size: 12
+  num_epochs: 100
+  save_every: False
+dataloader:
+  num_workers: 8

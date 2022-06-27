@@ -5,3 +5,18 @@ dbg/
 .idea
 #.vscode
 tmp
+# build
+build/
+# command
+command.md
+# data
+data
+dbg
+models
+disprcnn.egg-info/
+
+environment.yml
+
+*.pyc
+
+.vscode/

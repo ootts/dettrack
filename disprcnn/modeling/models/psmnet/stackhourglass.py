@@ -64,7 +64,7 @@ class PSMNet(nn.Module):
 
         self.maxdisp = self.cfg.maxdisp
         self.mindisp = self.cfg.mindisp
-        input_size = self.cfg.input_size
+        self.input_size = input_size = self.cfg.input_size
 
         # self.use_disparity_regression = use_disparity_regression
         # self.single_modal_weight_average = single_modal_weight_average
@@ -116,8 +116,11 @@ class PSMNet(nn.Module):
                 m.bias.data.zero_()
         if self.cfg.pretrained_model != '':
             ckpt = torch.load(self.cfg.pretrained_model, 'cpu')
-            ckpt = ckpt['state_dict']
-            ckpt = {k.replace('module.', ''): v for k, v in ckpt.items()}
+            if 'model' in ckpt:
+                ckpt = ckpt['model']
+            elif 'state_dict' in ckpt:
+                ckpt = ckpt['state_dict']
+                ckpt = {k.replace('module.', ''): v for k, v in ckpt.items()}
             self.load_state_dict(ckpt)
         # print()
 

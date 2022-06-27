@@ -127,16 +127,14 @@ class KITTIRoiDatasetRA(Dataset):
 
 
 def main():
-    roids = KITTIRoiDatasetRA('data/vob_roi_ra', 'train')
-    inputs, targets = roids[3]
-    plt.imshow(inputs['left'].permute(1, 2, 0))
-    plt.show()
-    plt.imshow(inputs['right'].permute(1, 2, 0))
-    plt.show()
-    plt.imshow(inputs['mask'])
-    plt.show()
-    plt.imshow(targets['disparity'], 'jet')
-    plt.show()
+    from disprcnn.engine.defaults import setup
+    from disprcnn.engine.defaults import default_argument_parser
+    from disprcnn.data import make_data_loader
+    parser = default_argument_parser()
+    args = parser.parse_args()
+    args.config_file = 'configs/idispnet/kitti.yaml'
+    cfg = setup(args)
+    ds = make_data_loader(cfg, is_train=False).dataset
     print()
 
 

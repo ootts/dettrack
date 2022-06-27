@@ -1,6 +1,6 @@
 import torch
 
-from disprcnn.modeling.roi_heads.mask_head.inference import Masker
+# from disprcnn.modeling.roi_heads.mask_head.inference import Masker
 from disprcnn.structures.bounding_box import BoxList
 from disprcnn.structures.disparity import DisparityMap
 from disprcnn.structures.segmentation_mask import SegmentationMask, BinaryMaskList
@@ -19,33 +19,31 @@ class DisparityMapProcessor:
     def _forward_single_image(self, left_prediction: BoxList, right_prediction: BoxList) -> DisparityMap:
         left_bbox = left_prediction.bbox
         right_bbox = right_prediction.bbox
-        disparity_preds = left_prediction.get_field('disparity')
-        mask_preds = left_prediction.get_field('mask').clone()
-        # print(disparity_preds.shape)
-        assert len(left_bbox) == len(right_bbox) == len(
-            disparity_preds), f'{len(left_bbox), len(right_bbox), len(disparity_preds)}'
+        disparity_or_depth_preds = left_prediction.get_field('disparity')
+        mask_pred = left_prediction.get_map('masks').get_mask_tensor(squeeze=False)
         num_rois = len(left_bbox)
-        if num_rois == 0:
-            disparity_full_image = torch.zeros((left_prediction.height, left_prediction.width))
-        else:
-            disparity_maps = []
-            for left_roi, right_roi, disp_roi, mask_pred in zip(left_bbox, right_bbox, disparity_preds, mask_preds):
-                x1, y1, x2, y2 = left_roi.tolist()
-                x1p, _, x2p, _ = right_roi.tolist()
-                x1, y1, x2, y2 = expand_box_to_integer((x1, y1, x2, y2))
-                x1p, _, x2p, _ = expand_box_to_integer((x1p, y1, x2p, y2))
-                disparity_map_per_roi = torch.zeros((left_prediction.height, left_prediction.width))
-                # mask = mask_pred.squeeze(0)
-                # mask = SegmentationMask(BinaryMaskList(mask, size=mask.shape[::-1]), size=mask.shape[::-1],
-                #                         mode='mask').crop((x1, y1, x1 + max(x2 - x1, x2p - x1p), y2))
-                disp_roi = DisparityMap(disp_roi).resize(
-                    (max(x2 - x1, x2p - x1p), y2 - y1)).crop(
+        disparity_maps_per_img = []
+        if num_rois != 0:
+            for left_roi, right_roi, disp_or_depth_roi, mask in zip(left_bbox, right_bbox,
+                                                                    disparity_or_depth_preds, mask_pred):
+                x1, y1, x2, y2 = expand_box_to_integer(left_roi.tolist())
+                x1p, _, x2p, _ = expand_box_to_integer(right_roi.tolist())
+                depth_map_per_roi = torch.zeros((left_prediction.height, left_prediction.width)).cuda()
+                disparity_map_per_roi = torch.zeros_like(depth_map_per_roi)
+                disp_roi = DisparityMap(disp_or_depth_roi).resize(
+                    (max(x2 - x1, x2p - x1p), y2 - y1),
+                    mode='inverse_bilinear',
+                    x1_minus_x1p=x1 - x1p).crop(
                     (0, 0, x2 - x1, y2 - y1)).data
                 disp_roi = disp_roi + x1 - x1p
                 disparity_map_per_roi[y1:y2, x1:x2] = disp_roi
-                disparity_maps.append(disparity_map_per_roi)
-            disparity_full_image = torch.stack(disparity_maps).max(dim=0)[0]
-        return DisparityMap(disparity_full_image)
+                disparity_map_per_roi = disparity_map_per_roi * mask.float().cuda()
+                disparity_maps_per_img.append(disparity_map_per_roi)
+        if len(disparity_maps_per_img) != 0:
+            disparity_maps_per_img = torch.stack(disparity_maps_per_img).sum(dim=0)
+        else:
+            disparity_maps_per_img = torch.zeros((left_prediction.height, left_prediction.width))
+        return DisparityMap(disparity_maps_per_img)
 
     def __call__(self, left_predictions, right_predictions):
         if isinstance(left_predictions, BoxList) and isinstance(right_predictions, BoxList):

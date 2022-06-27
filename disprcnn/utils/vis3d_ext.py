@@ -567,3 +567,8 @@ class Vis3D(vis3d.Vis3D):
             self.add_box_by_6border(-10, y, -10, 10, y + 0.01, 10, name=name)
         if z is not None:
             self.add_box_by_6border(-10, -10, z, 10, 10, z + 0.01, name=name)
+
+    def add_box3dlist(self, box3dlist, name=None):
+        if len(box3dlist) > 0:
+            corners = box3dlist.convert('corners').bbox_3d.reshape(-1, 8, 3)
+            self.add_boxes(corners, name=name)

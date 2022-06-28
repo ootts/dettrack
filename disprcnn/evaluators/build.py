@@ -50,8 +50,15 @@ def build(cfg):
 
     return f
 
+
 # def build_evaluators(cfg):
 #     evaluators = []
 #     for e in cfg.test.evaluators:
 #         evaluators.append(EVALUATORS[e](cfg))
 #     return evaluators
+@EVALUATORS.register("kittiobj")
+def build(cfg):
+    def f(x, ds):
+        print()  # todo
+
+    return f

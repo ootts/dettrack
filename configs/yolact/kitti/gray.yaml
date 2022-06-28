@@ -77,7 +77,7 @@ input:
 test:
   do_visualization: True
   visualizer: yolact
-  evaluators: [ ]
+  evaluators: [ "kittiobj" ]
   batch_size: 2
   save_predictions: True
   force_recompute: False

@@ -2,7 +2,7 @@ model:
   meta_architecture: "DRCNN"
   drcnn:
     yolact_on: True
-    pretrained_yolact: "???models/yolact/kitti/resnet50/model_iteration_277500.pth"
+    pretrained_yolact: "models/yolact/kitti/gray/model_iteration_115000.pth"
     ssim_coef: 0.18742550637410094
     ssim_intercept: 4.41360665450609
     ssim_std: 23.81503735
@@ -56,7 +56,7 @@ input:
 
 test:
   do_visualization: False
-  evaluators: [ "" ]# todo
+  evaluators: [ "kittiobj" ]
   batch_size: 1
   save_predictions: True
   force_recompute: False

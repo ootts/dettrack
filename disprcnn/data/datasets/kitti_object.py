@@ -119,7 +119,15 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         left_img = cv2.imread(os.path.join(self.root, 'object', split, 'image_2', img_id + '.png'))
         right_img = cv2.imread(os.path.join(self.root, 'object', split, 'image_3', img_id + '.png'))
         if self.cfg.use_gray:
-            print()
+            Lgray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
+            left_img[..., 0] = Lgray
+            left_img[..., 1] = Lgray
+            left_img[..., 2] = Lgray
+            Rgray = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
+            right_img[..., 0] = Rgray
+            right_img[..., 1] = Rgray
+            right_img[..., 2] = Rgray
+            
             # todo
         imgs = {'left': left_img, 'right': right_img}
         return imgs

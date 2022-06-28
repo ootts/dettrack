@@ -22,3 +22,5 @@ PKG-INFO
 
 *.so
 *.egg-info/*
+
+./pytorch-ssim/

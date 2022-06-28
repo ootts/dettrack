@@ -28,4 +28,5 @@ pybind11
 kornia
 transforms3d
 zarr
+pytorch-ssim
 scripts/vis3d-0.10.6-py3-none-any.whl

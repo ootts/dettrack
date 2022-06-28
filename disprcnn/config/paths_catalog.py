@@ -17,6 +17,8 @@ class DatasetCatalog(object):
             return get_coco2017(name)
         elif name.startswith("kittikins"):
             return get_kittikins(name)
+        elif name.startswith("graykittikins"):
+            return get_graykittikins(name)
         elif name.startswith("kittitracking"):
             return get_kittitracking(name)
         elif name.startswith("kittiobj"):
@@ -24,6 +26,20 @@ class DatasetCatalog(object):
         elif name.startswith("kittiroi"):
             return get_kittiroi(name)
         raise RuntimeError("Dataset not available: {}".format(name))
+
+def get_graykittikins(name):
+    split = name.split("_")[1]
+    ds_len = -1
+    if split == 'valmini':
+        split = 'val'
+        ds_len = 100
+    return dict(
+        factory='GrayKITTIKinsDataset',
+        args={'root': 'data/kitti',
+              'split': split,
+              'ds_len': ds_len
+              }
+    )
 
 
 def get_coco2017(name):

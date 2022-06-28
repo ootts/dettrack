@@ -20,3 +20,8 @@ environment.yml
 *.pyc
 
 .vscode/
+
+PKG-INFO
+
+*.so
+*.egg-info/*

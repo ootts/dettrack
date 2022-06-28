@@ -79,6 +79,8 @@ test:
   visualizer: yolact
   evaluators: [ ]
   batch_size: 2
+  save_predictions: True
+  force_recompute: False
 
 dataloader:
   #  collator: DetectionBatchCollator

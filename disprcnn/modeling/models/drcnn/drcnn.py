@@ -202,12 +202,13 @@ class DRCNN(nn.Module):
         return im
 
     def vis_roi_disp(self, dps, left_result, right_result, vis3d):
-        dmp = DisparityMapProcessor()
-        disparity_map = dmp(left_result, right_result)
-        target = dps['targets']['left'][0]
-        calib = target.get_field('calib').calib
-        pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
-        vis3d.add_point_cloud(pts_rect)
-        vis3d.add_image(dps['original_images']['left'][0].cpu().numpy())
-        vis3d.add_box3dlist(target.get_field('box3d'))
-        print()
+        if vis3d.enable:
+            dmp = DisparityMapProcessor()
+            disparity_map = dmp(left_result, right_result)
+            target = dps['targets']['left'][0]
+            calib = target.get_field('calib').calib
+            pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
+            vis3d.add_point_cloud(pts_rect)
+            vis3d.add_image(dps['original_images']['left'][0].cpu().numpy())
+            vis3d.add_box3dlist(target.get_field('box3d'))
+            print()

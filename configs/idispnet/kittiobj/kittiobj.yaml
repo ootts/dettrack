@@ -16,7 +16,7 @@ model:
 datasets:
   train: ("kittiobj_train",)
   #  test: "kittiobj_train"
-  test: "kittiobj_val"
+  test: "kittiobj_train"
 #  test: "kittiobj_valmini"
 solver:
   trainer: drcnn

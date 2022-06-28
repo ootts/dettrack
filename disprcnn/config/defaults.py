@@ -160,6 +160,7 @@ _C.dataset.kitti_object.filter_empty = False
 _C.dataset.kitti_object.offline_2d_predictions_path = ''
 _C.dataset.kitti_object.shape_prior_base = 'vob'
 _C.dataset.kitti_object.remove_ignore = True
+_C.dataset.kitti_object.use_gray = False
 
 _C.dataset.kittiroi = CN()
 _C.dataset.kittiroi.root = 'data/???'

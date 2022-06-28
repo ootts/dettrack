@@ -118,6 +118,9 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         split = 'training' if not is_testing_split(self.split) else 'testing'
         left_img = cv2.imread(os.path.join(self.root, 'object', split, 'image_2', img_id + '.png'))
         right_img = cv2.imread(os.path.join(self.root, 'object', split, 'image_3', img_id + '.png'))
+        if self.cfg.use_gray:
+            print()
+            # todo
         imgs = {'left': left_img, 'right': right_img}
         return imgs
 
@@ -417,135 +420,6 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
 
     def is_testing_split(self):
         return is_testing_split(self.split)
-
-
-class KITTIObjectSequenceDataset:
-    def __init__(self, imgid: int, root, transforms=None, offline_2d_predictions_path=''):
-        print('using dataset,', self.__class__.__name__)
-        self.root = root
-        self.prev_root = '/raid/dataset/kitti/object/zips/testing'
-        self.transforms = transforms
-        self.offline_preds_path = offline_2d_predictions_path
-        cls = KITTIObjectDataset.CLASSES
-        self.class_to_ind = dict(zip(cls, range(len(cls))))
-        # make cache or read cached annotation
-        self.annotations = self.read_annotations()
-        self.infos = self.read_info()
-        self.ids = [0, 1, 2, 3]
-        self.imgid = imgid
-        self.truncations_list, self.occlusions_list = [], []
-        self.offline_2d_predictions_dir = offline_2d_predictions_path
-        print('using dataset of length', self.__len__())
-
-    def __getitem__(self, index):
-        imgs = self.get_image(index)
-        targets = self.get_ground_truth(index)
-        if self.transforms is not None:
-            imgs, targets = self.transforms(imgs, targets)
-        if self.offline_2d_predictions_dir != '':
-            lp, rp = self.get_offline_prediction(index)
-            return imgs, targets, index, lp, rp
-        else:
-            return imgs, targets, index
-
-    def get_image(self, index):
-        img_id = '%06d' % self.imgid
-        split = 'testing'
-        if index == 3:
-            left_img = Image.open(os.path.join(self.root, 'object', split, 'image_2', img_id + '.png'))
-            right_img = Image.open(os.path.join(self.root, 'object', split, 'image_3', img_id + '.png'))
-        else:
-            index = index + 1
-            left_img = Image.open(os.path.join(self.prev_root, 'prev_2/%06d_0%d.png' % (self.imgid, index)))
-            right_img = Image.open(os.path.join(self.prev_root, 'prev_3/%06d_0%d.png' % (self.imgid, index)))
-        imgs = {'left': left_img, 'right': right_img}
-        return imgs
-
-    def get_ground_truth(self, index):
-        img_id = self.ids[index]
-        fakebox = torch.tensor([[0, 0, 0, 0]])
-        info = self.get_img_info(index)
-        height, width = info['height'], info['width']
-        left_target = BoxList(fakebox, (width, height), mode="xyxy")
-        left_target.add_field('image_size', torch.tensor([[width, height]]).repeat(len(left_target), 1))
-        left_target.add_field('calib', Calib(self.get_calibration(index), (width, height)))
-        left_target.add_field('index', torch.full((len(left_target), 1), index, dtype=torch.long))
-        left_target.add_field('masks', self.get_mask(index))
-        left_target.add_map('disparity', self.get_disparity(index))
-        left_target.add_field('imgid', torch.full((len(left_target), 1), int(img_id), dtype=torch.long))
-        # right target
-        right_target = BoxList(fakebox, (width, height), mode="xyxy")
-        target = {'left': left_target, 'right': right_target}
-        return target
-
-    def __len__(self):
-        return 4
-
-    def get_img_info(self, index):
-        img_id = self.ids[index]
-        return self.infos[int(img_id)]
-
-    def map_class_id_to_class_name(self, class_id):
-        return KITTIObjectDataset.CLASSES[class_id]
-
-    def read_annotations(self):
-        return {'left': [], 'right': []}
-
-    def read_info(self):
-        split = 'testing'
-        infopath = os.path.join(self.root,
-                                f'object/{split}/infos.pkl')
-        if not os.path.exists(infopath):
-            infos = []
-            total = 7518
-            for i in tqdm(range(total)):
-                img = load_image_2(self.root, split, i)
-                infos.append({"height": img.height, "width": img.width, 'size': img.size})
-            pickle.dump(infos, open(infopath, 'wb'))
-        else:
-            with open(infopath, 'rb') as f:
-                infos = pickle.load(f)
-        return infos
-
-    def get_offline_prediction(self, index):
-        imgid = self.ids[index]
-        pred = pickle.load(open(os.path.join(
-            self.offline_2d_predictions_dir, str(imgid) + '.pkl'), 'rb'))
-        lp, rp = pred['left'], pred['right']
-        return lp, rp
-
-    def get_mask(self, index):
-        imginfo = self.get_img_info(index)
-        return SegmentationMask(np.zeros((imginfo['height'], imginfo['width'])),
-                                (imginfo['width'], imginfo['height']),
-                                mode='mask')
-
-    def get_disparity(self, index):
-        imginfo = self.get_img_info(index)
-        return DisparityMap(np.ones((imginfo['height'], imginfo['width'])))
-
-    def get_calibration(self, index):
-        imgid = self.ids[index]
-        split = 'testing'
-        calib = load_calib(self.root, split, imgid)
-        return calib
-
-
-class KITTIPrev1VOB(KITTIObjectDataset):
-
-    def __init__(self, root, split, transforms=None, filter_empty=False, offline_2d_predictions_path='',
-                 shape_prior_base='vob_pad_cs_dimreg', remove_ignore=True):
-        super().__init__(root, split, transforms, filter_empty, offline_2d_predictions_path, shape_prior_base,
-                         remove_ignore)
-
-    def get_image(self, index):
-        img_id = self.ids[index]
-        # split = 'training' if self.split != 'test' else 'testing'
-        split = 'training' if not is_testing_split(self.split) else 'testing'
-        left_img = Image.open(os.path.join(self.root, 'object', split, 'prev_2', img_id + '_01.png'))
-        right_img = Image.open(os.path.join(self.root, 'object', split, 'prev_3', img_id + '_01.png'))
-        imgs = {'left': left_img, 'right': right_img}
-        return imgs
 
 
 def is_testing_split(split):

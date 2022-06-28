@@ -67,15 +67,16 @@ class DRCNN(nn.Module):
             left_result.plot(dps['original_images']['left'][0], show=True)
             right_result.plot(dps['original_images']['right'][0], show=True)
         ##############  ↓ Step 2: idispnet  ↓  ##############
-        left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
-                                                                                                    left_result,
-                                                                                                    right_result)
-        if len(left_roi_images) > 0:
-            disp_output = self.idispnet({'left': left_roi_images, 'right': right_roi_images})
-        else:
-            disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
-        left_result.add_field('disparity', disp_output)
-        self.vis_roi_disp(dps, left_result, right_result, vis3d)
+        if self.cfg.idispnet_on:
+            left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
+                                                                                                        left_result,
+                                                                                                        right_result)
+            if len(left_roi_images) > 0:
+                disp_output = self.idispnet({'left': left_roi_images, 'right': right_roi_images})
+            else:
+                disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
+            left_result.add_field('disparity', disp_output)
+            self.vis_roi_disp(dps, left_result, right_result, vis3d)
         ##############  ↓ Step 3: 3D detector  ↓  ##############
         # todo
         ##############  ↓ Step 4: return  ↓  ##############

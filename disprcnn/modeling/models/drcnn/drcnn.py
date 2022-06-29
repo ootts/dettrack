@@ -52,23 +52,14 @@ class DRCNN(nn.Module):
         vis3d.set_scene_id(dps['global_step'])
         ##############  ↓ Step 1: 2D  ↓  ##############
         assert self.yolact.training is False
-        # if dps['imgid'][0] == 6879:
-        #     print("error")
-        # else:
-        #     left_result = None
-        #     right_result = None
-        #     outputs = {'left': left_result, 'right': right_result}            
-        #     loss_dict = {}
-        #     return outputs, loss_dict
         with torch.no_grad():
             preds_left = self.yolact({'image': dps['images']['left']})
             preds_right = self.yolact({'image': dps['images']['right']})
         h, w, _ = dps['original_images']['left'][0].shape
-       
 
         left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
         right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
-        
+
         left_result, right_result = self.match_lp_rp(left_result, right_result,
                                                      dps['original_images']['left'][0],
                                                      dps['original_images']['right'][0])
@@ -118,7 +109,7 @@ class DRCNN(nn.Module):
                     print("error")
                     boxlist = boxlist[vec]
             else:
-                masks = SegmentationMask(masks, (w, h), mode='mask').convert("poly", retvalid=retvalid)            
+                masks = SegmentationMask(masks, (w, h), mode='mask').convert("poly", retvalid=retvalid)
             boxlist.add_map("masks", masks)
         return boxlist
 

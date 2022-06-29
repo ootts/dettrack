@@ -127,8 +127,6 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             right_img[..., 0] = Rgray
             right_img[..., 1] = Rgray
             right_img[..., 2] = Rgray
-            
-            # todo
         imgs = {'left': left_img, 'right': right_img}
         return imgs
 

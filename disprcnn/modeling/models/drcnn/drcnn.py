@@ -52,12 +52,23 @@ class DRCNN(nn.Module):
         vis3d.set_scene_id(dps['global_step'])
         ##############  ↓ Step 1: 2D  ↓  ##############
         assert self.yolact.training is False
+        # if dps['imgid'][0] == 6879:
+        #     print("error")
+        # else:
+        #     left_result = None
+        #     right_result = None
+        #     outputs = {'left': left_result, 'right': right_result}            
+        #     loss_dict = {}
+        #     return outputs, loss_dict
         with torch.no_grad():
             preds_left = self.yolact({'image': dps['images']['left']})
             preds_right = self.yolact({'image': dps['images']['right']})
         h, w, _ = dps['original_images']['left'][0].shape
-        left_result = self.decode_yolact_preds(preds_left, h, w)
+       
+
+        left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
         right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
+        
         left_result, right_result = self.match_lp_rp(left_result, right_result,
                                                      dps['original_images']['left'][0],
                                                      dps['original_images']['right'][0])
@@ -85,7 +96,7 @@ class DRCNN(nn.Module):
         loss_dict = {}
         return outputs, loss_dict
 
-    def decode_yolact_preds(self, preds, h, w, add_mask=True):
+    def decode_yolact_preds(self, preds, h, w, add_mask=True, retvalid=False):
         if preds[0]['detection'] is not None:
             preds = postprocess(preds, w, h, to_long=False)
             labels, scores, box2d, masks = preds
@@ -101,7 +112,13 @@ class DRCNN(nn.Module):
             keep = masks.sum(1).sum(1) > 20
             boxlist = boxlist[keep]
             masks = masks[keep]
-            masks = SegmentationMask(masks, (w, h), mode='mask').convert("poly")
+            if retvalid:
+                vec, masks = SegmentationMask(masks, (w, h), mode='mask').convert("poly", retvalid=retvalid)
+                if not vec.all():
+                    print("error")
+                    boxlist = boxlist[vec]
+            else:
+                masks = SegmentationMask(masks, (w, h), mode='mask').convert("poly", retvalid=retvalid)            
             boxlist.add_map("masks", masks)
         return boxlist
 

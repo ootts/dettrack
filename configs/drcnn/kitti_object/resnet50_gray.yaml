@@ -2,6 +2,7 @@ model:
   meta_architecture: "DRCNN"
   drcnn:
     yolact_on: True
+    retvalid: True
     pretrained_yolact: "models/yolact/kitti/gray/model_iteration_115000.pth"
     ssim_coef: 0.18742550637410094
     ssim_intercept: 4.41360665450609

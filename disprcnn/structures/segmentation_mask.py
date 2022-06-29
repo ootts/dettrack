@@ -160,12 +160,19 @@ class BinaryMaskList(object):
         resized_size = width, height
         return BinaryMaskList(resized_masks, resized_size)
 
-    def convert_to_polygon(self):
+    def convert_to_polygon(self, retvalid=False):
         if self.masks.numel() == 0:
-            return PolygonList([], self.size)
+            if retvalid:
+                return np.array([]), PolygonList([], self.size)
+            else:
+                return PolygonList([], self.size)
 
         contours = self._findContours()
-        return PolygonList(contours, self.size)
+        if retvalid:
+            lst = PolygonList(contours, self.size)
+            return lst.validvec, lst
+        else:
+            return PolygonList(contours, self.size)
 
     def to(self, *args, **kwargs):
         return self
@@ -376,6 +383,7 @@ class PolygonList(object):
             size: absolute image size
 
         """
+        First = True
         if isinstance(polygons, (list, tuple)):
             if len(polygons) == 0:
                 polygons = [[[]]]
@@ -390,7 +398,9 @@ class PolygonList(object):
 
         elif isinstance(polygons, PolygonList):
             size = polygons.size
-            polygons = polygons.polygons
+            self.validvec = polygons.validvec
+            polygons = polygons.polygons            
+            First = False
 
         else:
             RuntimeError(
@@ -400,12 +410,21 @@ class PolygonList(object):
 
         assert isinstance(size, (list, tuple)), str(type(size))
 
-        self.polygons = []
+    
+        if First:
+            self.validvec = []
+        self.polygons = []        
         for p in polygons:
             p = PolygonInstance(p, size)
             if len(p) > 0:
                 self.polygons.append(p)
-
+                if First:
+                    self.validvec.append(True)
+            else:
+                if First:
+                    self.validvec.append(False)
+        if First:
+            self.validvec = np.array(self.validvec)
         self.size = tuple(size)
 
     def transpose(self, method):
@@ -535,18 +554,25 @@ class SegmentationMask(object):
     def to(self, *args, **kwargs):
         return self
 
-    def convert(self, mode):
+    def convert(self, mode, retvalid=False):
         if mode == self.mode:
             return self
 
         if mode == "poly":
-            converted_instances = self.instances.convert_to_polygon()
+            if retvalid:
+                validvec, converted_instances = self.instances.convert_to_polygon(retvalid=retvalid)
+            else:
+                converted_instances = self.instances.convert_to_polygon()
+
         elif mode == "mask":
             converted_instances = self.instances.convert_to_binarymask()
         else:
             raise NotImplementedError("Unknown mode: %s" % str(mode))
 
-        return SegmentationMask(converted_instances, self.size, mode)
+        if retvalid:
+            return validvec, SegmentationMask(converted_instances, self.size, mode)
+        else:
+            return SegmentationMask(converted_instances, self.size, mode)
 
     def get_mask_tensor(self, squeeze=True):
         instances = self.instances

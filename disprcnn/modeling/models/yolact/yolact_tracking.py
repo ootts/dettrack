@@ -206,10 +206,29 @@ class YolactTracking(nn.Module):
             # TODO
             max_score, idxs = match_score.max(1)
             # todo fix bug for empty bin!!!
-            dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()
+            # dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()            
             # matched = max_score > 0.5
-            matched = max_score > -0.2  # todo: set in defaults and cfg.yaml
-            matched = matched & dual
+            matched = max_score > self.cfg.thresh 
+            unmatched = ~matched
+            matchidx = idxs[matched]
+            duplicateid = []
+            for id in matchidx:
+                if id == 0:
+                    continue
+                if sum(matchidx==id) > 1:
+                    if id not in duplicateid:                    
+                        duplicateid.append(id)
+            for id in duplicateid:
+                conflict_box = (idxs == id) & matched
+                idscores = match_score[..., id]
+                idscores[~conflict_box] = -torch.inf
+                maxval, maxid = idscores.max(0)
+                conflict_box[maxid] = False
+                matched[conflict_box] = False
+            
+            matchidx = idxs[matched]
+
+            # matched = matched & dual
         else:
             matched = torch.full([len(preds[0])], False).cuda()
         cur_trackids = torch.full([len(preds[0])], -1).long().cuda()
@@ -220,6 +239,8 @@ class YolactTracking(nn.Module):
             self.memory[idxs[matched]] = cur_feat
             cat_lst = []
             # todo:simplify
+            # self.boxmemory.bbox[matchidx] = preds[0].bbox[matched]
+            
             for i in range(len(self.boxmemory)):
                 if i in idxs[matched]:
                     mask = torch.full([len(preds[0])], False)

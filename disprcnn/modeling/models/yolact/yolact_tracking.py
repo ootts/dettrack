@@ -171,8 +171,6 @@ class YolactTracking(nn.Module):
         ious = torch.zeros([len(preds[0]), 1], dtype=torch.float, device="cuda")
         ious = torch.cat([ious, boxlist_iou(preds[0], self.boxmemory)], dim=1)
         return ious
-        
-
 
     def forward_test(self, dps):
         seqid = dps['seq']
@@ -203,17 +201,17 @@ class YolactTracking(nn.Module):
         if match_score.numel() > 0:
             match_score = F.softmax(match_score, dim=1)
             iou_score = self.calcIOUscore(preds)
-            conf_score = torch.t(confidence.repeat(len(self.boxmemory), 1))
-            conf_score = torch.cat([torch.full([len(preds[0]), 1], 0, device="cuda"), conf_score], dim=1)
-            match_score = torch.log(match_score) + self.cfg.alpha*torch.log(conf_score) + self.cfg.beta*iou_score
+            conf_score = torch.t(confidence.repeat(len(self.boxmemory) + 1, 1))
+            match_score = torch.log(match_score) + self.cfg.alpha * torch.log(conf_score) + self.cfg.beta * iou_score
             # TODO
             max_score, idxs = match_score.max(1)
+            # todo fix bug for empty bin!!!
             dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()
-            # matched = max_score > 0.5  # todo: set hyper-parameter
-            matched = max_score > -0.2
+            # matched = max_score > 0.5
+            matched = max_score > -0.2  # todo: set in defaults and cfg.yaml
             matched = matched & dual
         else:
-            matched = torch.full([len(preds[0])], False).cuda()            
+            matched = torch.full([len(preds[0])], False).cuda()
         cur_trackids = torch.full([len(preds[0])], -1).long().cuda()
         if matched.sum() > 0:
             idxs = idxs - 1
@@ -221,17 +219,18 @@ class YolactTracking(nn.Module):
             cur_feat = roi_features[matched]
             self.memory[idxs[matched]] = cur_feat
             cat_lst = []
+            # todo:simplify
             for i in range(len(self.boxmemory)):
                 if i in idxs[matched]:
-                    mask = torch.full([len(preds[0])], False)                
-                    mask[torch.nonzero(idxs==i)[0].squeeze()] = True
+                    mask = torch.full([len(preds[0])], False)
+                    mask[torch.nonzero(idxs == i)[0].squeeze()] = True
                     cat_lst.append(preds[0][mask])
                 else:
                     mask = torch.full([len(self.boxmemory)], False)
                     mask[i] = True
                     cat_lst.append(self.boxmemory[mask])
             self.boxmemory = cat_boxlist(cat_lst)
-                
+
         unmatched = ~matched
         if unmatched.sum() > 0:
             new_tids = torch.arange(self.memory.shape[0], self.memory.shape[0] + unmatched.sum()).long().cuda()
@@ -268,8 +267,6 @@ class YolactTracking(nn.Module):
             return self.forward_train(dps)
         else:
             return self.forward_test(dps)
-
-
 
     def decode_yolact_preds(self, preds, h, w):
         # img = dps['image0'][0]

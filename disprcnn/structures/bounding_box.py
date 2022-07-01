@@ -250,7 +250,7 @@ class BoxList(object):
         return bbox
 
     def __getitem__(self, item):
-        bbox = BoxList(self.bbox[item, ...], self.size, self.mode)
+        bbox = BoxList(self.bbox[item], self.size, self.mode)
         # bbox._copy_map(self)
         for k, v in self.extra_fields.items():
             if isinstance(v, int):

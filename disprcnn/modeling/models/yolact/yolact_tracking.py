@@ -166,7 +166,7 @@ class YolactTracking(nn.Module):
         return output, loss_dict
 
     def calcIOUscore(self, preds):
-        if len(self.boxmemory) <= 1:
+        if not isinstance(self.boxmemory, BoxList):
             return torch.empty([len(preds[0]), len(self.memory)], dtype=torch.float, device='cuda')
         ious = torch.zeros([len(preds[0]), 1], dtype=torch.float, device="cuda")
         ious = torch.cat([ious, boxlist_iou(preds[0], self.boxmemory)], dim=1)

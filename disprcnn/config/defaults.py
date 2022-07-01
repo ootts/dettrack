@@ -121,6 +121,8 @@ _C.model.yolact.fpn.use_conv_downsample = True
 _C.model.yolact_tracking = CN()
 _C.model.yolact_tracking.pretrained_yolact = ''
 _C.model.yolact_tracking.fix_yolact = True
+_C.model.yolact_tracking.alpha = 0.1
+_C.model.yolact_tracking.beta = 0.1
 _C.model.yolact_tracking.track_head = CN()
 _C.model.yolact_tracking.track_head.in_channels = 256
 _C.model.yolact_tracking.track_head.roi_feat_size = 7
@@ -167,6 +169,9 @@ _C.dataset.kittiroi = CN()
 _C.dataset.kittiroi.root = 'data/???'
 _C.dataset.kittiroi.maxdisp = 48
 _C.dataset.kittiroi.mindisp = -48
+
+_C.dataset.kitti_tracking = CN()
+_C.dataset.kitti_tracking.use_gray = False
 
 _C.input = CN()
 _C.input.transforms = []

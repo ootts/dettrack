@@ -34,6 +34,7 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         """
         self.root = root
         self.split = split
+        self.gray = cfg.dataset.kitti_tracking.use_gray
         cls = KITTITrackingDataset.CLASSES
         self.remove_ignore = remove_ignore
         self.class_to_ind = dict(zip(cls, range(len(cls))))
@@ -136,6 +137,11 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
     def get_image(self, seq, frameid):
         split = 'training' if not is_testing_split(self.split) else 'testing'
         left_img = cv2.imread(osp.join(self.root, 'tracking', split, f'image_02/{seq:04d}/{frameid:06d}.png'))
+        if self.gray:
+            grayimg = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
+            left_img[..., 0] = grayimg
+            left_img[..., 1] = grayimg
+            left_img[..., 2] = grayimg
         return left_img
 
     def get_ground_truth(self, seq, frameid):

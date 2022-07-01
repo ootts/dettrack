@@ -5,11 +5,14 @@ model:
     class_names: [ 'car' ]
     pretrained_backbone: ""
   yolact_tracking:
-    pretrained_yolact: "models/yolact/kitti/resnet50/model_iteration_277500.pth"
+    pretrained_yolact: "models/yolact/kitti/gray/model_iteration_115000.pth"
+    alpha: 0
+    beta: 0.8
+    # beta: 20
 datasets:
   train: ("kittitracking_train",)
-  # test: "kittitracking_val"
-  test: "kittitracking_valmini"
+  test: "kittitracking_val"
+#  test: "kittitracking_valmini"
 solver:
   trainer: yolacttracking
   batch_size: 8
@@ -44,6 +47,10 @@ input:
       to_float: False
       in_channel_order: 'BGR'
       channel_order: 'RGB'
+
+dataset:
+  kitti_tracking:
+    use_gray: True
 
 test:
   do_visualization: True

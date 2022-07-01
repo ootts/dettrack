@@ -9,7 +9,7 @@ from matplotlib import colors as mcolors
 from disprcnn.structures.bounding_box import BoxList
 
 from disprcnn.modeling.models.yolact.submodules import *
-from disprcnn.structures.boxlist_ops import boxlist_iou
+from disprcnn.structures.boxlist_ops import boxlist_iou, cat_boxlist
 from .yolact import Yolact
 
 
@@ -129,6 +129,7 @@ class YolactTracking(nn.Module):
         self.dbg = cfg.dbg is True
         self.seq_id = -1
         self.memory = None
+        self.boxmemory = [0]
         self.evaltime = EvalTime(disable=not cfg.evaltime)
 
     def forward_train(self, dps):
@@ -164,6 +165,15 @@ class YolactTracking(nn.Module):
         evaltime('loss')
         return output, loss_dict
 
+    def calcIOUscore(self, preds):
+        if len(self.boxmemory) <= 1:
+            return torch.empty([len(preds[0]), len(self.memory)], dtype=torch.float, device='cuda')
+        ious = torch.zeros([len(preds[0]), 1], dtype=torch.float, device="cuda")
+        ious = torch.cat([ious, boxlist_iou(preds[0], self.boxmemory)], dim=1)
+        return ious
+        
+
+
     def forward_test(self, dps):
         seqid = dps['seq']
         assert seqid.shape[0] == 1  # batch size=1
@@ -172,8 +182,11 @@ class YolactTracking(nn.Module):
             # reset
             self.seq_id = seqid
             self.memory = torch.empty([0, 256, 7, 7], dtype=torch.float, device='cuda')  # todo: put in cfg
+            self.boxmemory = None
         self.evaltime('begin')
         preds, feat = self.yolact({'image': dps['image']}, return_features=True)
+        if preds[0]['detection'] is not None:
+            confidence = preds[0]["detection"]["score"]
         preds = self.decode_yolact_preds(preds, dps['image'].shape[-2], dps['image'].shape[-1])
         self.evaltime('detect')
         feat = feat[0]
@@ -189,23 +202,49 @@ class YolactTracking(nn.Module):
         ##############  ↓ Step : match  ↓  ##############
         if match_score.numel() > 0:
             match_score = F.softmax(match_score, dim=1)
+            iou_score = self.calcIOUscore(preds)
+            conf_score = torch.t(confidence.repeat(len(self.boxmemory), 1))
+            conf_score = torch.cat([torch.full([len(preds[0]), 1], 0, device="cuda"), conf_score], dim=1)
+            match_score = torch.log(match_score) + self.cfg.alpha*torch.log(conf_score) + self.cfg.beta*iou_score
+            # TODO
             max_score, idxs = match_score.max(1)
             dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()
-            matched = max_score > 0.5  # todo: set hyper-parameter
+            # matched = max_score > 0.5  # todo: set hyper-parameter
+            matched = max_score > -0.2
             matched = matched & dual
         else:
-            matched = torch.full([len(preds[0])], False).cuda()
+            matched = torch.full([len(preds[0])], False).cuda()            
         cur_trackids = torch.full([len(preds[0])], -1).long().cuda()
         if matched.sum() > 0:
             idxs = idxs - 1
             cur_trackids[matched] = idxs[matched]
             cur_feat = roi_features[matched]
             self.memory[idxs[matched]] = cur_feat
+            cat_lst = []
+            for i in range(len(self.boxmemory)):
+                if i in idxs[matched]:
+                    mask = torch.full([len(preds[0])], False)                
+                    mask[torch.nonzero(idxs==i)[0].squeeze()] = True
+                    cat_lst.append(preds[0][mask])
+                else:
+                    mask = torch.full([len(self.boxmemory)], False)
+                    mask[i] = True
+                    cat_lst.append(self.boxmemory[mask])
+            self.boxmemory = cat_boxlist(cat_lst)
+                
         unmatched = ~matched
         if unmatched.sum() > 0:
             new_tids = torch.arange(self.memory.shape[0], self.memory.shape[0] + unmatched.sum()).long().cuda()
             cur_trackids[unmatched] = new_tids
             self.memory = torch.cat([self.memory, roi_features[unmatched]], dim=0)
+            res_box = preds[0][unmatched]
+            # for i in range(len(unmatched)):
+            #     if unmatched[i]:
+            #         cat_box.append()
+            if isinstance(self.boxmemory, BoxList):
+                self.boxmemory = cat_boxlist([self.boxmemory, res_box])
+            else:
+                self.boxmemory = res_box
         width, height = dps['width'][0].item(), dps['height'][0].item()
         pred = preds[0].resize([width, height])
         pred.add_field('trackids', cur_trackids)
@@ -229,6 +268,8 @@ class YolactTracking(nn.Module):
             return self.forward_train(dps)
         else:
             return self.forward_test(dps)
+
+
 
     def decode_yolact_preds(self, preds, h, w):
         # img = dps['image0'][0]

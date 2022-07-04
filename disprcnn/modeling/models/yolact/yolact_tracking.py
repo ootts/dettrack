@@ -208,7 +208,7 @@ class YolactTracking(nn.Module):
             # todo fix bug for empty bin!!!
             # dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()            
             # matched = max_score > 0.5
-            matched = max_score > self.cfg.thresh 
+            matched =( max_score > self.cfg.thresh) & (idxs!=0)
             unmatched = ~matched
             matchidx = idxs[matched]
             duplicateid = []
@@ -231,42 +231,50 @@ class YolactTracking(nn.Module):
             # matched = matched & dual
         else:
             matched = torch.full([len(preds[0])], False).cuda()
+            unmatched = ~matched
         cur_trackids = torch.full([len(preds[0])], -1).long().cuda()
         if matched.sum() > 0:
             idxs = idxs - 1
             cur_trackids[matched] = idxs[matched]
             cur_feat = roi_features[matched]
-            self.memory[idxs[matched]] = cur_feat
-            cat_lst = []
+            self.memory[idxs[matched]] = cur_feat            
             # todo:simplify
-            # self.boxmemory.bbox[matchidx] = preds[0].bbox[matched]
+            self.boxmemory.bbox[idxs[matched]] = preds[0].bbox[matched]   
+                    
             
-            for i in range(len(self.boxmemory)):
-                if i in idxs[matched]:
-                    mask = torch.full([len(preds[0])], False)
-                    mask[torch.nonzero(idxs == i)[0].squeeze()] = True
-                    cat_lst.append(preds[0][mask])
-                else:
-                    mask = torch.full([len(self.boxmemory)], False)
-                    mask[i] = True
-                    cat_lst.append(self.boxmemory[mask])
-            self.boxmemory = cat_boxlist(cat_lst)
+            # for i in range(len(self.boxmemory)):
+            #     if i in idxs[matched]:
+            #         mask = torch.full([len(preds[0])], False)
+            #         mask[torch.nonzero(idxs == i)[0].squeeze()] = True
+            #         cat_lst.append(preds[0][mask])
+            #     else:
+            #         mask = torch.full([len(self.boxmemory)], False)
+            #         mask[i] = True
+            #         cat_lst.append(self.boxmemory[mask])
+            # self.boxmemory = cat_boxlist(cat_lst)
+        
+        # unmatched = ~matched
 
-        unmatched = ~matched
         if unmatched.sum() > 0:
             new_tids = torch.arange(self.memory.shape[0], self.memory.shape[0] + unmatched.sum()).long().cuda()
             cur_trackids[unmatched] = new_tids
             self.memory = torch.cat([self.memory, roi_features[unmatched]], dim=0)
             res_box = preds[0][unmatched]
-            # for i in range(len(unmatched)):
-            #     if unmatched[i]:
-            #         cat_box.append()
-            if isinstance(self.boxmemory, BoxList):
-                self.boxmemory = cat_boxlist([self.boxmemory, res_box])
+            if not isinstance(self.boxmemory, BoxList):
+                self.boxmemory = preds[0][unmatched]
             else:
-                self.boxmemory = res_box
+                self.boxmemory = cat_boxlist([self.boxmemory, preds[0][unmatched]]) 
+            # if isinstance(self.boxmemory, BoxList):
+            #     self.boxmemory = cat_boxlist([self.boxmemory, res_box])
+            # else:
+            #     self.boxmemory = res_box
         width, height = dps['width'][0].item(), dps['height'][0].item()
         pred = preds[0].resize([width, height])
+
+        keep = matched | unmatched
+        pred = pred[keep]
+        cur_trackids = cur_trackids[keep]
+
         pred.add_field('trackids', cur_trackids)
         self.evaltime('track')
         if self.dbg:

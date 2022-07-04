@@ -123,6 +123,7 @@ _C.model.yolact_tracking.pretrained_yolact = ''
 _C.model.yolact_tracking.fix_yolact = True
 _C.model.yolact_tracking.alpha = 0.1
 _C.model.yolact_tracking.beta = 0.1
+_C.model.yolact_tracking.thresh = 0.0
 _C.model.yolact_tracking.track_head = CN()
 _C.model.yolact_tracking.track_head.in_channels = 256
 _C.model.yolact_tracking.track_head.roi_feat_size = 7

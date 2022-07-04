@@ -7,13 +7,13 @@ model:
   yolact_tracking:
     pretrained_yolact: "models/yolact/kitti/resnet50/model_iteration_277500.pth"
     alpha: 0.1
-    beta: 2.0
+    beta: 10.0
     thresh: 0.0
     # beta: 20
 datasets:
   train: ("kittitracking_train",)
-  # test: "kittitracking_val"
-  test: "kittitracking_valmini"
+  test: "kittitracking_val"
+  # test: "kittitracking_valmini"
 solver:
   trainer: yolacttracking
   batch_size: 8

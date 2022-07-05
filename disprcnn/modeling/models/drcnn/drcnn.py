@@ -1,7 +1,7 @@
 import numpy as np
 import pytorch_ssim
 import torch
-from dl_ext.timer import EvalTime
+from dl_ext.timer import EvalTime, Timer
 
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.structures.disparity import DisparityMap
@@ -30,6 +30,7 @@ class DRCNN(nn.Module):
         self.cfg = cfg.model.drcnn
         self.dbg = cfg.dbg is True
         self.evaltime = EvalTime(disable=not cfg.evaltime)
+        self.detector2d_timer = Timer(ignore_first_n=10)
         if self.cfg.yolact_on:
             self.yolact = Yolact(cfg)
             ckpt = torch.load(self.cfg.pretrained_yolact, 'cpu')
@@ -52,7 +53,9 @@ class DRCNN(nn.Module):
         )
         vis3d.set_scene_id(dps['global_step'])
         ##############  ↓ Step 1: 2D  ↓  ##############
-        self.evaltime('begin')
+        # self.evaltime('begin')
+        if self.total_cfg.evaltime:
+            self.detector2d_timer.tic(True)
         assert self.yolact.training is False
         with torch.no_grad():
             preds_left = self.yolact({'image': dps['images']['left']})
@@ -67,7 +70,10 @@ class DRCNN(nn.Module):
                                                      dps['original_images']['right'][0])
         left_result.add_field('imgid', dps['imgid'][0].item())
         right_result.add_field('imgid', dps['imgid'][0].item())
-        self.evaltime('2D')
+        if self.total_cfg.evaltime:
+            self.detector2d_timer.toc(synchronize=True)
+            print('2D', self.detector2d_timer.average_time)
+        # self.evaltime('2D')
         if self.dbg:
             left_result.plot(dps['original_images']['left'][0], show=True)
             right_result.plot(dps['original_images']['right'][0], show=True)

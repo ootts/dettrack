@@ -81,6 +81,8 @@ class BaseTrainer:
         bar = tqdm(self.train_dl, leave=False) if is_main_process() else self.train_dl
         begin = time.time()
         for batch in bar:
+            for i in range(len(batch['image'])):
+                self.tb_writer.add_image("input"+str(i), batch['image'][i])
             self.optimizer.zero_grad()
             batch = to_cuda(batch)
             batch['global_step'] = self.global_steps

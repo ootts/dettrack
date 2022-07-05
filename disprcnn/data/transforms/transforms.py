@@ -403,6 +403,9 @@ class Resize(object):
 
         if self.preserve_aspect_ratio:
             width, height = Resize.calc_size_preserve_ar(img_w, img_h, self.max_size)
+            if height > 300:
+                width = int(width * 300 / height)
+                height = 300
         else:
             width, height = self.max_size, self.max_size
 

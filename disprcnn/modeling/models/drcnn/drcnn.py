@@ -1,6 +1,7 @@
 import numpy as np
 import pytorch_ssim
 import torch
+from dl_ext.timer import EvalTime
 
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.structures.disparity import DisparityMap
@@ -28,7 +29,7 @@ class DRCNN(nn.Module):
         self.total_cfg = cfg
         self.cfg = cfg.model.drcnn
         self.dbg = cfg.dbg is True
-
+        self.evaltime = EvalTime(disable=not cfg.evaltime)
         if self.cfg.yolact_on:
             self.yolact = Yolact(cfg)
             ckpt = torch.load(self.cfg.pretrained_yolact, 'cpu')
@@ -51,6 +52,7 @@ class DRCNN(nn.Module):
         )
         vis3d.set_scene_id(dps['global_step'])
         ##############  ↓ Step 1: 2D  ↓  ##############
+        self.evaltime('begin')
         assert self.yolact.training is False
         with torch.no_grad():
             preds_left = self.yolact({'image': dps['images']['left']})
@@ -65,11 +67,13 @@ class DRCNN(nn.Module):
                                                      dps['original_images']['right'][0])
         left_result.add_field('imgid', dps['imgid'][0].item())
         right_result.add_field('imgid', dps['imgid'][0].item())
+        self.evaltime('2D')
         if self.dbg:
             left_result.plot(dps['original_images']['left'][0], show=True)
             right_result.plot(dps['original_images']['right'][0], show=True)
         ##############  ↓ Step 2: idispnet  ↓  ##############
         if self.cfg.idispnet_on:
+            self.evaltime('idispnet begin')
             left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
                                                                                                         left_result,
                                                                                                         right_result)
@@ -78,6 +82,7 @@ class DRCNN(nn.Module):
             else:
                 disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
             left_result.add_field('disparity', disp_output)
+            self.evaltime('idispnet end')
             self.vis_roi_disp(dps, left_result, right_result, vis3d)
         ##############  ↓ Step 3: 3D detector  ↓  ##############
         # todo

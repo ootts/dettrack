@@ -53,8 +53,8 @@ input:
       channel_order: 'RGB'
 
 test:
-  do_visualization: False
-  #  visualizer: drcnn # todo: implement
+  do_visualization: True
+  visualizer: drcnn # todo: implement
   evaluators: [ "kittiobj" ]
   batch_size: 1
   save_predictions: True

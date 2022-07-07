@@ -27,6 +27,7 @@ class DatasetCatalog(object):
             return get_kittiroi(name)
         raise RuntimeError("Dataset not available: {}".format(name))
 
+
 def get_graykittikins(name):
     split = name.split("_")[1]
     ds_len = -1

@@ -494,6 +494,8 @@ class BoxList(object):
     def plot(self, img=None, show=False, **kwargs):
         import matplotlib.pyplot as plt
         from matplotlib import colors as mcolors
+        plt.close("all")
+        plt.axis('off')
         if img is not None:
             plt.imshow(to_array(img, dtype=np.uint8))
         colors = list(mcolors.BASE_COLORS.keys())
@@ -501,9 +503,11 @@ class BoxList(object):
             x, y, w, h = box
             c = colors[i % len(colors)]
             plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c))
-            plt.text(x, y, f'{i}', color=c, **kwargs)
+            text = str(i)
+            # plt.text(x, y, f'{i}', color=c, **kwargs)
             if self.has_field('scores'):
-                plt.text(x, y, '%.2f' % self.get_field('scores').tolist()[i], **kwargs)
+                text = text + " " + '%.2f' % self.get_field('scores').tolist()[i]
+                plt.text(x, y, text, color=c, **kwargs)
         if self.has_field('mask'):
             masks = self.get_field('mask')
             from disprcnn.modeling.roi_heads.mask_head.inference import Masker

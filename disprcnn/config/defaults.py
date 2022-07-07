@@ -156,6 +156,7 @@ _C.model.drcnn.ssim_std = 0.0
 _C.model.drcnn.idispnet_on = False
 _C.model.drcnn.detector_3d_on = False
 _C.model.drcnn.retvalid = True
+_C.model.drcnn.nvis = 10
 
 _C.dataset = CN()
 _C.dataset.kitti = CN()

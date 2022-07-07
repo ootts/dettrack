@@ -31,6 +31,7 @@ class DRCNN(nn.Module):
         self.dbg = cfg.dbg is True
         self.evaltime = EvalTime(disable=not cfg.evaltime)
         self.detector2d_timer = Timer(ignore_first_n=10)
+        self.idispnet_timer = Timer(ignore_first_n=10)
         if self.cfg.yolact_on:
             self.yolact = Yolact(cfg)
             ckpt = torch.load(self.cfg.pretrained_yolact, 'cpu')
@@ -79,7 +80,9 @@ class DRCNN(nn.Module):
             right_result.plot(dps['original_images']['right'][0], show=True)
         ##############  ↓ Step 2: idispnet  ↓  ##############
         if self.cfg.idispnet_on:
-            self.evaltime('idispnet begin')
+            if self.total_cfg.evaltime:
+                self.idispnet_timer.tic(synchronize=True)
+            # self.evaltime('idispnet begin')
             left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
                                                                                                         left_result,
                                                                                                         right_result)
@@ -88,7 +91,10 @@ class DRCNN(nn.Module):
             else:
                 disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
             left_result.add_field('disparity', disp_output)
-            self.evaltime('idispnet end')
+            # self.evaltime('idispnet end')
+            if self.total_cfg.evaltime:
+                self.idispnet_timer.toc(synchronize=True)
+                print('idispnet', self.idispnet_timer.average_time)
             self.vis_roi_disp(dps, left_result, right_result, vis3d)
         ##############  ↓ Step 3: 3D detector  ↓  ##############
         # todo

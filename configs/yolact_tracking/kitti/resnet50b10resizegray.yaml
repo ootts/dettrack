@@ -12,8 +12,8 @@ model:
     # beta: 20
 datasets:
   train: ("kittitracking_train",)
-  # test: "kittitracking_val"
-  test: "kittitracking_valmini"
+  test: "kittitracking_val"
+  # test: "kittitracking_valmini"
 solver:
   trainer: yolacttracking
   batch_size: 8

@@ -11,8 +11,8 @@ model:
     class_names: [ 'car' ]
 datasets:
   train: ("kittiobj_train",)
-  #  test: "kittiobj_train"
-  test: "kittiobj_val"
+  test: "kittiobj_train"
+  # test: "kittiobj_val"
   # test: "kittiobj_valmini"
 solver:
   trainer: drcnn
@@ -57,7 +57,7 @@ dataset:
     use_gray: True
 
 test:
-  do_visualization: False
+  do_visualization: True
   #  visualizer: drcnn # todo: implement
   evaluators: [ "kittiobj" ]
   batch_size: 1

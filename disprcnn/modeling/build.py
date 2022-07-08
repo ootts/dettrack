@@ -3,10 +3,12 @@ import loguru
 from disprcnn.modeling.models.yolact.yolact import YolactWrapper
 from disprcnn.modeling.models.yolact.yolact_tracking import YolactTracking
 from disprcnn.modeling.models.drcnn.drcnn import DRCNN
+from disprcnn.modeling.models.pointpillars.pointpillars import PointPillars
 
 _META_ARCHITECTURES = {'Yolact': YolactWrapper,
                        'YolactTracking': YolactTracking,
-                       'DRCNN': DRCNN
+                       'DRCNN': DRCNN,
+                       'PointPillars': PointPillars
                        }
 
 

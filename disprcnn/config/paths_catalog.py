@@ -25,6 +25,8 @@ class DatasetCatalog(object):
             return get_kittiobj(name)
         elif name.startswith("kittiroi"):
             return get_kittiroi(name)
+        elif name.startswith("kittivelodyne"):
+            return get_kittivelodyne(name)
         raise RuntimeError("Dataset not available: {}".format(name))
 
 
@@ -95,6 +97,20 @@ def get_kittiobj(name):
         factory='KITTIObjectDataset',
         args={'root': 'data/kitti',
               'split': split,
+              'ds_len': ds_len
+              }
+    )
+
+
+def get_kittivelodyne(name):
+    split = name.split("_")[1]
+    ds_len = -1
+    if split == 'valmini':
+        split = 'val'
+        ds_len = 100
+    return dict(
+        factory='KittiVelodyneDataset',
+        args={'split': split,
               'ds_len': ds_len
               }
     )

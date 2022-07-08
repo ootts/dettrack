@@ -3,8 +3,8 @@ from .default_batch_collator import DefaultBatchCollator
 from .extended_batch_collator import ExtendedBatchCollator
 from .detection_collate import DetectionBatchCollator
 
-
 # from .sp_collate import SparseBatchCollator, PaddedSparseBatchCollator, ExtendBatchCollator
+from .second_collator import SecondBatchCollator
 
 
 @BATCH_COLLATORS.register('DefaultBatchCollator')
@@ -20,6 +20,11 @@ def build(cfg):
 @BATCH_COLLATORS.register('DetectionBatchCollator')
 def build(cfg):
     return DetectionBatchCollator()
+
+
+@BATCH_COLLATORS.register('SecondBatchCollator')
+def build(cfg):
+    return SecondBatchCollator()
 
 
 def make_batch_collator(cfg):

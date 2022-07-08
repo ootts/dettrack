@@ -146,6 +146,85 @@ _C.model.idispnet.preprocess.masker_thresh = 0.5
 _C.model.idispnet.preprocess.size = 224
 _C.model.idispnet.preprocess.resize_mode = 'inverse_bilinear'
 
+_C.model.pointpillars = CN()
+_C.model.pointpillars.num_classes = 1
+_C.model.pointpillars.use_rotate_nms = False
+_C.model.pointpillars.multiclass_nms = False
+_C.model.pointpillars.use_bev = False
+_C.model.pointpillars.lidar_only = False
+_C.model.pointpillars.use_groupnorm = False
+_C.model.pointpillars.pos_class_weight = 1.0
+_C.model.pointpillars.neg_class_weight = 1.0
+_C.model.pointpillars.voxel_feature_extractor = CN()
+# _C.model.pointpillars.voxel_feature_extractor.module_class_name = "PillarFeatureNet"
+_C.model.pointpillars.voxel_feature_extractor.num_filters = [64]
+_C.model.pointpillars.voxel_feature_extractor.with_distance = False
+_C.model.pointpillars.middle_feature_extractor = CN()
+# _C.model.pointpillars.middle_feature_extractor.module_class_name = "PointPillarsScatter"
+_C.model.pointpillars.middle_feature_extractor.module_class_name = "PointPillarsScatter"
+_C.model.pointpillars.rpn = CN()
+_C.model.pointpillars.rpn.module_class_name = "RPN"
+_C.model.pointpillars.rpn.layer_nums = [3, 5, 5]
+_C.model.pointpillars.rpn.layer_strides = [2, 2, 2]
+_C.model.pointpillars.rpn.num_filters = [64, 128, 256]
+_C.model.pointpillars.rpn.upsample_strides = [1, 2, 4]
+_C.model.pointpillars.rpn.num_upsample_filters = [128, 128, 128]
+_C.model.pointpillars.rpn.num_groups = 32
+_C.model.pointpillars.use_sigmoid_score = True
+_C.model.pointpillars.loss = CN()
+_C.model.pointpillars.loss.localization_loss = CN()
+_C.model.pointpillars.loss.localization_loss.weighted_smooth_l1 = CN()
+_C.model.pointpillars.loss.localization_loss.weighted_smooth_l1.sigma = 3.0
+_C.model.pointpillars.loss.localization_loss.weighted_smooth_l1.code_weight = [1.0, 1.0, 1, 1, 1, 1]
+
+_C.model.pointpillars.loss.classification_loss = CN()
+_C.model.pointpillars.loss.classification_loss.weighted_sigmoid_focal = CN()
+_C.model.pointpillars.loss.classification_loss.weighted_sigmoid_focal.anchorwise_output = True
+_C.model.pointpillars.loss.classification_loss.weighted_sigmoid_focal.gamma = 2.0
+_C.model.pointpillars.loss.classification_loss.weighted_sigmoid_focal.alpha = 0.25
+_C.model.pointpillars.loss.classification_weight = 1.0
+_C.model.pointpillars.loss.localization_weight = 2.0
+
+_C.model.pointpillars.encode_rad_error_by_sin = True
+_C.model.pointpillars.encode_background_as_zeros = True
+_C.model.pointpillars.nms_pre_max_size = 1000
+_C.model.pointpillars.nms_post_max_size = 300
+_C.model.pointpillars.nms_score_threshold = 0.05000000074505806
+_C.model.pointpillars.nms_iou_threshold = 0.5
+_C.model.pointpillars.post_center_limit_range = [0.0, -39.68000030517578, -5.0, 69.12000274658203, 39.68000030517578,
+                                                 5.0]
+_C.model.pointpillars.use_direction_classifier = True
+_C.model.pointpillars.direction_loss_weight = 0.20000000298023224
+_C.model.pointpillars.pos_class_weight = 1.0
+_C.model.pointpillars.neg_class_weight = 1.0
+_C.model.pointpillars.loss_norm_type = "NormByNumPositives"
+_C.model.pointpillars.box_coder = "ground_box3d_coder"  # todo?
+
+_C.model.pointpillars.target_assigner = CN()
+_C.model.pointpillars.target_assigner.anchor_generators = CN()
+_C.model.pointpillars.target_assigner.anchor_generators.sizes = [1.600000023841858,
+                                                                 3.9000000953674316,
+                                                                 1.559999942779541]
+_C.model.pointpillars.target_assigner.anchor_generators.strides = [0.3199999928474426,
+                                                                   0.3199999928474426, 0.0]
+_C.model.pointpillars.target_assigner.anchor_generators.offsets = [0.1599999964237213,
+                                                                   -39.52000045776367,
+                                                                   -1.7799999713897705]
+_C.model.pointpillars.target_assigner.anchor_generators.rotations = [0, 1.5700000524520874]
+_C.model.pointpillars.target_assigner.anchor_generators.matched_threshold = 0.6000000238418579
+_C.model.pointpillars.target_assigner.anchor_generators.unmatched_threshold = 0.44999998807907104
+_C.model.pointpillars.target_assigner.anchor_generators.class_name = ""
+_C.model.pointpillars.target_assigner.sample_positive_fraction = -1.0
+_C.model.pointpillars.target_assigner.sample_size = 512
+_C.model.pointpillars.target_assigner.region_similarity_calculator = "nearest_iou_similarity"
+
+_C.model.pointpillars.num_point_features = 4
+
+_C.voxel_generator = CN()
+_C.voxel_generator.voxel_size = [0.1599999964237213, 0.1599999964237213, 4.0]
+_C.voxel_generator.point_cloud_range = [0.0, -39.68000030517578, -3.0, 69.12000274658203, 39.68000030517578, 1.0]
+_C.voxel_generator.max_number_of_points_per_voxel = 100
+
 _C.model.drcnn = CN()
 _C.model.drcnn.yolact_on = True
 _C.model.drcnn.pretrained_yolact = ''
@@ -174,6 +253,39 @@ _C.dataset.kittiroi.mindisp = -48
 
 _C.dataset.kitti_tracking = CN()
 _C.dataset.kitti_tracking.use_gray = False
+
+_C.dataset.kitti_velodyne = CN()
+_C.dataset.kitti_velodyne.without_reflectivity = False
+_C.dataset.kitti_velodyne.out_size_factor = 2
+_C.dataset.kitti_velodyne.generate_bev = False
+_C.dataset.kitti_velodyne.info_path = "data/kitti_second/kitti_infos_train.pkl"
+_C.dataset.kitti_velodyne.root_path = 'data/kitti_second'
+_C.dataset.kitti_velodyne.num_point_features = 4
+_C.dataset.kitti_velodyne.feature_map_size = [1, 248, 216]
+_C.dataset.kitti_velodyne.db_sampler = CN()
+_C.dataset.kitti_velodyne.db_sampler.database_info_path = "data/kitti_second/kitti_dbinfos_train.pkl"
+_C.dataset.kitti_velodyne.db_sampler.global_random_rotation_range_per_object = [0.0, 0.0]
+_C.dataset.kitti_velodyne.db_sampler.rate = 1.0
+_C.dataset.kitti_velodyne.db_sampler.sample_groups = []
+# _C.dataset.kitti_velodyne.db_sampler.sample_groups.name_to_max_num = CN()
+# _C.dataset.kitti_velodyne.db_sampler.sample_groups.key = "Car"
+# _C.dataset.kitti_velodyne.db_sampler.sample_groups.value = 15
+_C.dataset.kitti_velodyne.db_sampler.database_prep_steps = []
+_C.dataset.kitti_velodyne.class_names = ['Car']
+_C.dataset.kitti_velodyne.max_number_of_voxels = 12000
+_C.dataset.kitti_velodyne.remove_unknown_examples = False
+_C.dataset.kitti_velodyne.shuffle_points = True
+_C.dataset.kitti_velodyne.groundtruth_rotation_uniform_noise = [-0.15707963705062866, 0.15707963705062866]
+_C.dataset.kitti_velodyne.groundtruth_localization_noise_std = [0.25, 0.25, 0.25]
+_C.dataset.kitti_velodyne.global_rotation_uniform_noise = [-0.7853981852531433, 0.7853981852531433]
+_C.dataset.kitti_velodyne.global_scaling_uniform_noise = [0.949999988079071, 1.0499999523162842]
+_C.dataset.kitti_velodyne.global_random_rotation_range_per_object = [0.0, 0.0]
+_C.dataset.kitti_velodyne.anchor_area_threshold = 1.0
+_C.dataset.kitti_velodyne.groundtruth_points_drop_percentage = 0.0
+_C.dataset.kitti_velodyne.groundtruth_drop_max_keep_points = 15
+_C.dataset.kitti_velodyne.remove_points_after_sample = False
+_C.dataset.kitti_velodyne.remove_environment = False
+_C.dataset.kitti_velodyne.use_group_id = False
 
 _C.input = CN()
 _C.input.transforms = []

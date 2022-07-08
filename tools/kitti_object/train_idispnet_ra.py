@@ -95,7 +95,7 @@ def main():
     parser = default_argument_parser()
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
-    args.config_file = 'configs/idispnet/kitti.yaml'
+    # args.config_file = 'configs/idispnet/kitti.yaml'
     cfg = setup(args)
 
     num_gpus = torch.cuda.device_count()

@@ -93,11 +93,13 @@ class KittiVelodyneDataset(Dataset):
         return self._kitti_infos
 
     def __getitem__(self, idx):
-        return _read_and_prep_v9(
+        example = _read_and_prep_v9(
             info=self._kitti_infos[idx],
             root_path=self._root_path,
             num_point_features=self._num_point_features,
             prep_func=self._prep_func)
+        example.pop('num_voxels')
+        return example
 
 
 def prep_pointcloud(input_dict,

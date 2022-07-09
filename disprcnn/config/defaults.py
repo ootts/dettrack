@@ -220,6 +220,20 @@ _C.model.pointpillars.target_assigner.region_similarity_calculator = "nearest_io
 
 _C.model.pointpillars.num_point_features = 4
 
+_C.model.pointpillars.localization_loss = CN()
+# _C.model.pointpillars.localization_loss.type = "weighted_smooth_l1"
+_C.model.pointpillars.localization_loss.sigma = 3.0
+_C.model.pointpillars.localization_loss.code_weight = [1.0, 1, 1, 1, 1, 1, 1]
+
+_C.model.pointpillars.classification_loss = CN()
+# _C.model.pointpillars.classification_loss.type = "weighted_sigmoid_focal"
+_C.model.pointpillars.classification_loss.anchorwise_output = True
+_C.model.pointpillars.classification_loss.gamma = 2.0
+_C.model.pointpillars.classification_loss.alpha = 0.25
+
+_C.model.pointpillars.classification_weight = 1.0
+_C.model.pointpillars.localization_weight = 2.0
+
 _C.voxel_generator = CN()
 _C.voxel_generator.voxel_size = [0.1599999964237213, 0.1599999964237213, 4.0]
 _C.voxel_generator.point_cloud_range = [0.0, -39.68000030517578, -3.0, 69.12000274658203, 39.68000030517578, 1.0]

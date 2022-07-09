@@ -1,0 +1,69 @@
+model:
+  meta_architecture: "DRCNN"
+  drcnn:
+    yolact_on: True
+    pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_217500.pth"
+    ssim_coef: 0.18742550637410094
+    ssim_intercept: 4.41360665450609
+    ssim_std: 23.81503735
+    idispnet_on: True
+  yolact:
+    num_classes: 2
+    class_names: [ 'car' ]
+    pretrained_backbone: ""
+  idispnet:
+    pretrained_model: "models/idispnet/kitti_resizegray/bestmodel.pth"
+datasets:
+  train: ("kittiobj_train",)
+  test: "kittiobj_val"
+  #  test: "kittiobj_train"
+#  test: "kittiobj_valmini"
+solver:
+  trainer: drcnn
+  batch_size: 8
+  max_lr: 0.001
+  num_epochs: 1500
+  optimizer: SGD
+  scheduler: WarmupMultiStepLR
+  warmup_iters: 500
+  steps: [ 280000, 600000, 700000, 750000 ]
+  bias_lr_factor: 1
+  weight_decay: 0.0005
+  weight_decay_bias: 0.0005
+  save_every: True
+  save_mode: epoch
+  save_freq: 1
+  dist:
+    sampler:
+      shuffle: True
+input:
+  shuffle: True
+  transforms:
+    - name: ConvertFromInts
+    - name: Resize
+      max_size: 546
+      preserve_aspect_ratio: True
+      discard_box_width: 0.007272727272727273
+      discard_box_height: 0.007272727272727273
+      resize_gt: False
+    - name: BackboneTransform
+      normalize: True
+      mean: [ 103.94, 116.78, 123.68 ]
+      std: [ 57.38, 57.12, 58.40 ]
+      subtract_means: False
+      to_float: False
+      in_channel_order: 'BGR'
+      channel_order: 'RGB'
+dataset:
+  kitti_object:
+    use_gray: True
+test:
+  do_visualization: False
+  #  visualizer: drcnn # todo: implement
+  evaluators: [ ]
+  batch_size: 1
+  save_predictions: True
+
+dataloader:
+  collator: ExtendedBatchCollator
+  num_workers: 4

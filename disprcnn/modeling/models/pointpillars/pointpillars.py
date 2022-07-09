@@ -186,7 +186,9 @@ class PointPillars(nn.Module):
                     dir_logits, dir_targets, weights=weights)
                 dir_loss = dir_loss.sum() / batch_size_dev
                 loss_dict['dir_loss'] = dir_loss * self.cfg.direction_loss_weight
-
+            outputs = {}
+            metrics = {}
+            outputs['metrics'] = metrics
             return {}, loss_dict
         else:
             return self.predict(example, preds_dict)

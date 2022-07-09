@@ -165,7 +165,7 @@ class PointPillarsTrainer(BaseTrainer):
         torch.cuda.synchronize()
         epoch_time = format_time(time.time() - begin)
         if is_main_process():
-            metric_msgs = ['epoch %d, train, loss %.4f, time %s' % (
+            metric_msgs = ['epoch %d,\ train, loss %.4f, time %s' % (
                 epoch, loss_meter.avg, epoch_time)]
             # for metric, v in metric_ams.items():
             #     metric_msgs.append('%s %.4f' % (metric, v.avg))

@@ -252,7 +252,9 @@ _C.model.drcnn.retvalid = True
 _C.model.drcnn.nvis = 10
 
 _C.dataset = CN()
-_C.dataset.kitti = CN()
+_C.dataset.kitti_kins = CN()
+_C.dataset.kitti_kins.use_gray = False
+
 _C.dataset.kitti_object = CN()
 _C.dataset.kitti_object.filter_empty = False
 _C.dataset.kitti_object.offline_2d_predictions_path = ''

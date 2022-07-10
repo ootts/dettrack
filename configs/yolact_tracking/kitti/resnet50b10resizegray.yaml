@@ -5,15 +5,15 @@ model:
     class_names: [ 'car' ]
     pretrained_backbone: ""
   yolact_tracking:
-    pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_210000.pth"
+    pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_217500.pth"
     alpha: 0.1
     beta: 10.0
     thresh: 0.0
     # beta: 20
 datasets:
   train: ("kittitracking_train",)
-  test: "kittitracking_val"
-  # test: "kittitracking_valmini"
+  #  test: "kittitracking_val"
+  test: "kittitracking_valmini"
 solver:
   trainer: yolacttracking
   batch_size: 8

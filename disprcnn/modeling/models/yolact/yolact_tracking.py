@@ -131,6 +131,9 @@ class YolactTracking(nn.Module):
         self.memory = None
         self.boxmemory = [0]
         self.evaltime = EvalTime(disable=not cfg.evaltime)
+        if self.total_cfg.evaltime:
+            self.det2d_timer = Timer(ignore_first_n=10)
+            self.track_timer = Timer(ignore_first_n=10)
 
     def forward_train(self, dps):
         evaltime = EvalTime(disable=True)
@@ -181,12 +184,16 @@ class YolactTracking(nn.Module):
             self.seq_id = seqid
             self.memory = torch.empty([0, 256, 7, 7], dtype=torch.float, device='cuda')  # todo: put in cfg
             self.boxmemory = None
-        self.evaltime('begin')
+        if self.total_cfg.evaltime:
+            self.det2d_timer.tic(synchronize=True)
         preds, feat = self.yolact({'image': dps['image']}, return_features=True)
         if preds[0]['detection'] is not None:
             confidence = preds[0]["detection"]["score"]
         preds = self.decode_yolact_preds(preds, dps['image'].shape[-2], dps['image'].shape[-1])
-        self.evaltime('detect')
+        if self.total_cfg.evaltime:
+            self.det2d_timer.toc(synchronize=True)
+            print('2D detection', self.det2d_timer.average_time)
+            self.track_timer.tic(synchronize=True)
         feat = feat[0]
         roi_features = self.extract_roi_features(preds, feat)
         ref_x = self.memory
@@ -208,15 +215,15 @@ class YolactTracking(nn.Module):
             # todo fix bug for empty bin!!!
             # dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()            
             # matched = max_score > 0.5
-            matched =( max_score > self.cfg.thresh) & (idxs!=0)
+            matched = (max_score > self.cfg.thresh) & (idxs != 0)
             unmatched = ~matched
             matchidx = idxs[matched]
             duplicateid = []
             for id in matchidx:
                 if id == 0:
                     continue
-                if sum(matchidx==id) > 1:
-                    if id not in duplicateid:                    
+                if sum(matchidx == id) > 1:
+                    if id not in duplicateid:
                         duplicateid.append(id)
             for id in duplicateid:
                 conflict_box = (idxs == id) & matched
@@ -225,7 +232,7 @@ class YolactTracking(nn.Module):
                 maxval, maxid = idscores.max(0)
                 conflict_box[maxid] = False
                 matched[conflict_box] = False
-            
+
             matchidx = idxs[matched]
 
             # matched = matched & dual
@@ -237,23 +244,9 @@ class YolactTracking(nn.Module):
             idxs = idxs - 1
             cur_trackids[matched] = idxs[matched]
             cur_feat = roi_features[matched]
-            self.memory[idxs[matched]] = cur_feat            
+            self.memory[idxs[matched]] = cur_feat
             # todo:simplify
-            self.boxmemory.bbox[idxs[matched]] = preds[0].bbox[matched]   
-                    
-            
-            # for i in range(len(self.boxmemory)):
-            #     if i in idxs[matched]:
-            #         mask = torch.full([len(preds[0])], False)
-            #         mask[torch.nonzero(idxs == i)[0].squeeze()] = True
-            #         cat_lst.append(preds[0][mask])
-            #     else:
-            #         mask = torch.full([len(self.boxmemory)], False)
-            #         mask[i] = True
-            #         cat_lst.append(self.boxmemory[mask])
-            # self.boxmemory = cat_boxlist(cat_lst)
-        
-        # unmatched = ~matched
+            self.boxmemory.bbox[idxs[matched]] = preds[0].bbox[matched]
 
         if unmatched.sum() > 0:
             new_tids = torch.arange(self.memory.shape[0], self.memory.shape[0] + unmatched.sum()).long().cuda()
@@ -263,8 +256,8 @@ class YolactTracking(nn.Module):
             if not isinstance(self.boxmemory, BoxList):
                 self.boxmemory = preds[0][unmatched]
             else:
-                self.boxmemory = cat_boxlist([self.boxmemory, preds[0][unmatched]]) 
-            # if isinstance(self.boxmemory, BoxList):
+                self.boxmemory = cat_boxlist([self.boxmemory, preds[0][unmatched]])
+                # if isinstance(self.boxmemory, BoxList):
             #     self.boxmemory = cat_boxlist([self.boxmemory, res_box])
             # else:
             #     self.boxmemory = res_box
@@ -276,7 +269,9 @@ class YolactTracking(nn.Module):
         cur_trackids = cur_trackids[keep]
 
         pred.add_field('trackids', cur_trackids)
-        self.evaltime('track')
+        if self.total_cfg.evaltime:
+            self.track_timer.toc(synchronize=True)
+            print('tracking', self.track_timer.average_time)
         if self.dbg:
             img = untsfm(dps['image'][0], width, height)
             plt.imshow(img)

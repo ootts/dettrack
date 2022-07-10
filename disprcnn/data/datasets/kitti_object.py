@@ -144,7 +144,7 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             boxes_3d = Box3DList(left_annotation["boxes_3d"], mode='ry_lhwxyz')
             left_target.add_field("box3d", boxes_3d)
             left_target.add_map('disparity', self.get_disparity(index))
-            left_target.add_map('disparity_fg', self.get_disparity_fg(index))
+            # left_target.add_map('disparity_fg', self.get_disparity_fg(index))
             left_target.add_field('masks', self.get_mask(index))
             left_target.add_field('kins_masks', self.get_kins_mask(index, ))
             # left_target.add_field('kins_a_masks', self.get_kins_a_mask(index))

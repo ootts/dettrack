@@ -60,6 +60,7 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         """
         self.root = root
         self.split = split
+        self.cfg = cfg.dataset.kitti_kins
         cls = KITTIKinsDataset.CLASSES
         self.remove_ignore = remove_ignore
         self.class_to_ind = dict(zip(cls, range(len(cls))))
@@ -141,6 +142,11 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         img_id = self.ids[index]
         split = 'training' if not is_testing_split(self.split) else 'testing'
         left_img = cv2.imread(os.path.join(self.root, 'object', split, 'image_2', img_id + '.png'))
+        if self.cfg.use_gray:
+            Lgray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
+            left_img[..., 0] = Lgray
+            left_img[..., 1] = Lgray
+            left_img[..., 2] = Lgray
         return left_img
 
     def get_ground_truth(self, index):

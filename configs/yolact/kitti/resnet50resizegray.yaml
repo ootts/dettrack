@@ -28,6 +28,8 @@ solver:
 dataset:
   kitti_object:
     use_gray: True
+  kitti_kins:
+    use_gray: True
 input:
   shuffle: True
   transforms:
@@ -63,8 +65,8 @@ input:
   transforms_test:
     - name: ConvertFromInts
     - name: Resize
-      max_size: 683
-      preserve_aspect_ratio: False
+      max_size: 546
+      preserve_aspect_ratio: True
       discard_box_width: 0.007272727272727273
       discard_box_height: 0.007272727272727273
       resize_gt: False
@@ -80,9 +82,9 @@ input:
 test:
   do_visualization: True
   visualizer: yolact
-  evaluators: ["kittiobj"]
-  batch_size: 2
-  
+  #  evaluators: ["kittiobj"]
+  batch_size: 1
+
 
 dataloader:
   #  collator: DetectionBatchCollator

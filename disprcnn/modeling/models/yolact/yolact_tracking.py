@@ -3,7 +3,9 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from dl_ext.timer import EvalTime, Timer
+from disprcnn.utils.averagemeter import AverageMeter
+
+from disprcnn.utils.timer import EvalTime
 from torchvision.ops import RoIAlign
 from matplotlib import colors as mcolors
 from disprcnn.structures.bounding_box import BoxList
@@ -130,28 +132,26 @@ class YolactTracking(nn.Module):
         self.seq_id = -1
         self.memory = None
         self.boxmemory = [0]
-        self.evaltime = EvalTime(disable=not cfg.evaltime)
-        if self.total_cfg.evaltime:
-            self.det2d_timer = Timer(ignore_first_n=10)
-            self.track_timer = Timer(ignore_first_n=10)
+        self.evaltime = EvalTime(disable=not cfg.evaltime, do_print=False)
+        self.meter_2d = AverageMeter()
+        self.meter_track = AverageMeter()
 
     def forward_train(self, dps):
-        evaltime = EvalTime(disable=True)
         ##############  ↓ Step : forward yolact for each frame  ↓  ##############
-        evaltime('')
+        self.evaltime('')
         assert self.yolact.training is False
         with torch.no_grad():
             preds0, feat0 = self.yolact({'image': dps['image0']}, return_features=True)
             preds1, feat1 = self.yolact({'image': dps['image1']}, return_features=True)
         preds0 = self.decode_yolact_preds(preds0, dps['image0'].shape[-2], dps['image0'].shape[-1])
         preds1 = self.decode_yolact_preds(preds1, dps['image0'].shape[-2], dps['image0'].shape[-1])
-        evaltime('pred bbox')
+        self.evaltime('pred bbox')
         ##############  ↓ Step : roi align features  ↓  ##############
         feat0 = feat0[0]
         feat1 = feat1[0]
         roi_features0 = self.extract_roi_features(preds0, feat0)
         roi_features1 = self.extract_roi_features(preds1, feat1)
-        evaltime('roi align')
+        self.evaltime('roi align')
         ##############  ↓ Step : forward track head  ↓  ##############
         ref_x = roi_features0
         ref_x_n = [len(a) for a in preds0]
@@ -165,7 +165,7 @@ class YolactTracking(nn.Module):
         loss_match, acc = self.track_head.loss(match_score, ids, id_weights)
         output = {'metrics': {'acc': acc}}
         loss_dict = {'loss_match': loss_match}
-        evaltime('loss')
+        self.evaltime('loss')
         return output, loss_dict
 
     def calcIOUscore(self, preds):
@@ -184,16 +184,13 @@ class YolactTracking(nn.Module):
             self.seq_id = seqid
             self.memory = torch.empty([0, 256, 7, 7], dtype=torch.float, device='cuda')  # todo: put in cfg
             self.boxmemory = None
-        if self.total_cfg.evaltime:
-            self.det2d_timer.tic(synchronize=True)
+        self.evaltime('2d begin')
         preds, feat = self.yolact({'image': dps['image']}, return_features=True)
         if preds[0]['detection'] is not None:
             confidence = preds[0]["detection"]["score"]
         preds = self.decode_yolact_preds(preds, dps['image'].shape[-2], dps['image'].shape[-1])
-        if self.total_cfg.evaltime:
-            self.det2d_timer.toc(synchronize=True)
-            print('2D detection', self.det2d_timer.average_time)
-            self.track_timer.tic(synchronize=True)
+        self.meter_2d.update(self.evaltime('2d end'))
+        print('2d', self.meter_2d.avg)
         feat = feat[0]
         roi_features = self.extract_roi_features(preds, feat)
         ref_x = self.memory
@@ -269,9 +266,8 @@ class YolactTracking(nn.Module):
         cur_trackids = cur_trackids[keep]
 
         pred.add_field('trackids', cur_trackids)
-        if self.total_cfg.evaltime:
-            self.track_timer.toc(synchronize=True)
-            print('tracking', self.track_timer.average_time)
+        self.meter_track.update(self.evaltime('track'))
+        print('track', self.meter_track.avg)
         if self.dbg:
             img = untsfm(dps['image'][0], width, height)
             plt.imshow(img)

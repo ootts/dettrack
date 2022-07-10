@@ -10,7 +10,7 @@ import warnings
 import loguru
 import matplotlib.pyplot as plt
 import numpy as np
-from dl_ext.average_meter import AverageMeter
+from disprcnn.utils.averagemeter import AverageMeter
 from dl_ext.pytorch_ext.dist import *
 from dl_ext.pytorch_ext.optim import OneCycleScheduler, LRFinder
 from loguru import logger

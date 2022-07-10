@@ -140,14 +140,11 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             # left target
             left_target = BoxList(left_annotation["boxes"], (width, height), mode="xyxy")
             left_target.add_field("labels", left_annotation["labels"])
-            # left_target.add_field("alphas", left_annotation['alphas'])
             boxes_3d = Box3DList(left_annotation["boxes_3d"], mode='ry_lhwxyz')
             left_target.add_field("box3d", boxes_3d)
             left_target.add_map('disparity', self.get_disparity(index))
-            # left_target.add_map('disparity_fg', self.get_disparity_fg(index))
             left_target.add_field('masks', self.get_mask(index))
             left_target.add_field('kins_masks', self.get_kins_mask(index, ))
-            # left_target.add_field('kins_a_masks', self.get_kins_a_mask(index))
             left_target.add_field('truncation', torch.tensor(self.truncations_list[int(img_id)]))
             left_target.add_field('occlusion', torch.tensor(self.occlusions_list[int(img_id)]))
             left_target.add_field('image_size', torch.tensor([[width, height]]).repeat(len(left_target), 1))
@@ -429,6 +426,7 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
 
 
 def is_testing_split(split):
+    # return split in ['test', 'testmini', 'test1', 'test2', 'val']
     return split in ['test', 'testmini', 'test1', 'test2']
 
 

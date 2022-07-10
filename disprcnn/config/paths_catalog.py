@@ -60,7 +60,7 @@ def get_kittikins(name):
     ds_len = -1
     if split == 'valmini':
         split = 'val'
-        ds_len = 100
+        ds_len = 700
     return dict(
         factory='KITTIKinsDataset',
         args={'root': 'data/kitti',

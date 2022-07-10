@@ -1,4 +1,5 @@
 import glob
+import time
 
 import numpy as np
 import os
@@ -87,6 +88,7 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         elif self.split == 'val':
             seq, imgid = self.pairs[index]
             img = self.get_image(seq, imgid)
+            time.sleep(0.5)
             height, width, _ = img.shape
 
             # targets = self.get_ground_truth(seq, imgid)

@@ -6,7 +6,7 @@ import torch
 import torch.multiprocessing
 import torch.nn.functional as F
 from disprcnn.utils.stereo_utils import end_point_error
-from dl_ext import AverageMeter
+from disprcnn.utils.averagemeter import AverageMeter
 from fastai.train import fit_one_cycle
 from tqdm import tqdm, trange
 

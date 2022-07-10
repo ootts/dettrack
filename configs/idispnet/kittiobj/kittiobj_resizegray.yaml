@@ -6,6 +6,7 @@ model:
     ssim_coef: 0.18742550637410094
     ssim_intercept: 4.41360665450609
     ssim_std: 23.81503735
+    mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
     idispnet_on: True
   yolact:
     num_classes: 2
@@ -13,10 +14,16 @@ model:
     pretrained_backbone: ""
   idispnet:
     pretrained_model: "models/idispnet/kitti_resizegray/bestmodel.pth"
+#    maxdisp: 24
+#    mindisp: -24
+#    input_size: 112
 datasets:
   train: ("kittiobj_train",)
   test: "kittiobj_val"
-  #  test: "kittiobj_train"
+  #  test: "kittiobj_test"
+  #  test: "kittikins_valmini"
+#  test: "kittitracking_valmini"
+#  test: "kittiobj_train"
 #  test: "kittiobj_valmini"
 solver:
   trainer: drcnn

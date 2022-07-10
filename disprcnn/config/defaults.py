@@ -246,6 +246,7 @@ _C.model.drcnn.fix_yolact = True
 _C.model.drcnn.ssim_coef = 0.0
 _C.model.drcnn.ssim_intercept = 0.0
 _C.model.drcnn.ssim_std = 0.0
+_C.model.drcnn.mask_mode = 'poly'
 _C.model.drcnn.idispnet_on = False
 _C.model.drcnn.detector_3d_on = False
 _C.model.drcnn.retvalid = True

@@ -1,7 +1,7 @@
 import numpy as np
 import pytorch_ssim
 import torch
-from dl_ext.timer import EvalTime, Timer
+from disprcnn.utils.timer import EvalTime
 
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.structures.disparity import DisparityMap
@@ -21,6 +21,7 @@ from torch import nn
 
 from disprcnn.utils.stereo_utils import expand_box_to_integer
 from disprcnn.utils.vis3d_ext import Vis3D
+from disprcnn.utils.averagemeter import AverageMeter
 
 
 class DRCNN(nn.Module):
@@ -29,9 +30,9 @@ class DRCNN(nn.Module):
         self.total_cfg = cfg
         self.cfg = cfg.model.drcnn
         self.dbg = cfg.dbg is True
-        self.evaltime = EvalTime(disable=not cfg.evaltime)
-        self.detector2d_timer = Timer(ignore_first_n=10)
-        self.idispnet_timer = Timer(ignore_first_n=10)
+        self.evaltime = EvalTime(disable=not cfg.evaltime, do_print=False)
+        # self.detector2d_timer = Timer(ignore_first_n=20)
+        # self.idispnet_timer = Timer(ignore_first_n=20)
         if self.cfg.yolact_on:
             self.yolact = Yolact(cfg)
             ckpt = torch.load(self.cfg.pretrained_yolact, 'cpu')
@@ -43,6 +44,11 @@ class DRCNN(nn.Module):
         if self.cfg.detector_3d_on:
             raise NotImplementedError()
             print()
+        self.time_meter = AverageMeter(ignore_first=20)
+        self.decode_time_meter = AverageMeter(ignore_first=20)
+        self.match_time_meter = AverageMeter(ignore_first=20)
+        self.idispnet_prep_time_meter = AverageMeter(ignore_first=20)
+        self.idispnet_time_meter = AverageMeter(ignore_first=20)
 
     def forward(self, dps):
         vis3d = Vis3D(
@@ -54,47 +60,44 @@ class DRCNN(nn.Module):
         )
         vis3d.set_scene_id(dps['global_step'])
         ##############  ↓ Step 1: 2D  ↓  ##############
-        # self.evaltime('begin')
-        if self.total_cfg.evaltime:
-            self.detector2d_timer.tic(True)
         assert self.yolact.training is False
+        self.evaltime('begin')
         with torch.no_grad():
             preds_left = self.yolact({'image': dps['images']['left']})
             preds_right = self.yolact({'image': dps['images']['right']})
-        h, w, _ = dps['original_images']['left'][0].shape
 
+        h, w, _ = dps['original_images']['left'][0].shape
+        self.time_meter.update(self.evaltime('yolact forward'))
+        print('forward', self.time_meter.avg)
         left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
         right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
-
+        self.decode_time_meter.update(self.evaltime('decode'))
+        print('decode', self.decode_time_meter.avg)
         left_result, right_result = self.match_lp_rp(left_result, right_result,
                                                      dps['original_images']['left'][0],
                                                      dps['original_images']['right'][0])
+        self.match_time_meter.update(self.evaltime('match'))
+        print('match', self.match_time_meter.avg)
         left_result.add_field('imgid', dps['imgid'][0].item())
         right_result.add_field('imgid', dps['imgid'][0].item())
-        if self.total_cfg.evaltime:
-            self.detector2d_timer.toc(synchronize=True)
-            print('2D', self.detector2d_timer.average_time)
-        # self.evaltime('2D')
         if self.dbg:
             left_result.plot(dps['original_images']['left'][0], show=True)
             right_result.plot(dps['original_images']['right'][0], show=True)
         ##############  ↓ Step 2: idispnet  ↓  ##############
         if self.cfg.idispnet_on:
-            if self.total_cfg.evaltime:
-                self.idispnet_timer.tic(synchronize=True)
-            # self.evaltime('idispnet begin')
+            self.evaltime('idispnet begin')
             left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
                                                                                                         left_result,
                                                                                                         right_result)
+            self.idispnet_prep_time_meter.update(self.evaltime('idispnet prep'))
+            print('idispnet prep', self.idispnet_prep_time_meter.avg)
             if len(left_roi_images) > 0:
                 disp_output = self.idispnet({'left': left_roi_images, 'right': right_roi_images})
             else:
                 disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
             left_result.add_field('disparity', disp_output)
-            # self.evaltime('idispnet end')
-            if self.total_cfg.evaltime:
-                self.idispnet_timer.toc(synchronize=True)
-                print('idispnet', self.idispnet_timer.average_time)
+            self.idispnet_time_meter.update(self.evaltime('idispnet end'))
+            print('idispnet', self.idispnet_time_meter.avg)
             self.vis_roi_disp(dps, left_result, right_result, vis3d)
         ##############  ↓ Step 3: 3D detector  ↓  ##############
         # todo
@@ -105,6 +108,8 @@ class DRCNN(nn.Module):
         return outputs, loss_dict
 
     def decode_yolact_preds(self, preds, h, w, add_mask=True, retvalid=False):
+        evaltime = EvalTime(disable=True)
+        evaltime('')
         if preds[0]['detection'] is not None:
             preds = postprocess(preds, w, h, to_long=False)
             labels, scores, box2d, masks = preds
@@ -113,6 +118,7 @@ class DRCNN(nn.Module):
             labels = torch.empty([0], dtype=torch.long, device='cuda')
             scores = torch.empty([0], dtype=torch.float, device='cuda')
             masks = torch.empty([0, h, w], dtype=torch.long, device='cuda')
+        evaltime('postprocess')
         boxlist = BoxList(box2d, (w, h))
         boxlist.add_field("labels", labels + 1)
         boxlist.add_field("scores", scores)
@@ -121,13 +127,13 @@ class DRCNN(nn.Module):
             boxlist = boxlist[keep]
             masks = masks[keep]
             if retvalid:
-                vec, masks = SegmentationMask(masks, (w, h), mode='mask').convert("poly", retvalid=retvalid)
-                if not vec.all():
-                    print("error")
+                vec, masks = SegmentationMask(masks, (w, h), mode='mask').convert(self.cfg.mask_mode, retvalid=retvalid)
+                if vec is not None and not vec.all():
                     boxlist = boxlist[vec]
             else:
-                masks = SegmentationMask(masks, (w, h), mode='mask').convert("poly", retvalid=retvalid)
+                masks = SegmentationMask(masks, (w, h), mode='mask').convert(self.cfg.mask_mode, retvalid=retvalid)
             boxlist.add_map("masks", masks)
+        evaltime('masks')
         return boxlist
 
     def match_lp_rp(self, lp, rp, img2, img3):

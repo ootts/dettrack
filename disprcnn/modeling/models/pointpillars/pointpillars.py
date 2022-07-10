@@ -52,6 +52,7 @@ class PointPillars(nn.Module):
                                                             self.cfg.classification_loss.alpha)
         self.cls_loss_weight = self.cfg.classification_weight
         self.loc_loss_weight = self.cfg.localization_weight
+        self._direction_loss_weight = self.cfg.direction_loss_weight
 
         self.voxel_feature_extractor = PillarFeatureNet(
             self.cfg.num_point_features,
@@ -175,6 +176,9 @@ class PointPillars(nn.Module):
             cls_loss_reduced *= self.cls_loss_weight
             loss_dict = {'loc_loss_reduced': loc_loss_reduced,
                          'cls_loss_reduced': cls_loss_reduced}
+
+            loss = loc_loss_reduced + cls_loss_reduced
+
             if self.use_direction_classifier:
                 dir_targets = get_direction_target(example['anchors'],
                                                    reg_targets)
@@ -185,11 +189,28 @@ class PointPillars(nn.Module):
                 dir_loss = self.dir_loss_ftor(
                     dir_logits, dir_targets, weights=weights)
                 dir_loss = dir_loss.sum() / batch_size_dev
+
+                loss += dir_loss * self._direction_loss_weight
+
                 loss_dict['dir_loss'] = dir_loss * self.cfg.direction_loss_weight
+
             outputs = {}
-            metrics = {}
+            metrics = {}  # todo
+            metrics['loss'] = loss
+            metrics['cls_loss'] = cls_loss
+            metrics['loc_loss'] = loc_loss
+            metrics['cls_pos_loss'] = cls_pos_loss
+            metrics['cls_neg_loss'] = cls_neg_loss
+            metrics['cls_preds'] = cls_preds
+            metrics['dir_loss_reduced'] = dir_loss
+            metrics['cls_loss_reduced'] = cls_loss_reduced
+            metrics['loc_loss_reduced'] = loc_loss_reduced
+            metrics['cared'] = cared
+
+            outputs['ret'] = self.update_metrics(cls_loss_reduced, loc_loss_reduced, cls_preds, labels, cared)
+
             outputs['metrics'] = metrics
-            return {}, loss_dict
+            return outputs, loss_dict
         else:
             return self.predict(example, preds_dict)
 

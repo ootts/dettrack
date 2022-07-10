@@ -7,7 +7,7 @@ import os
 import time
 
 import loguru
-from dl_ext import AverageMeter
+from disprcnn.utils.averagemeter import AverageMeter
 from dl_ext.pytorch_ext import OneCycleScheduler, reduce_loss
 from termcolor import colored
 from torch.nn.utils import clip_grad_norm_, clip_grad_value_
@@ -134,6 +134,13 @@ class PointPillarsTrainer(BaseTrainer):
             # record and plot loss and metrics
             reduced_loss = reduce_loss(loss)
             metrics = {}
+
+            if 'ret' in output:
+                for k, v in output['ret'].items():
+                    if '@' in k:
+                        k = k.replace('@', '_')
+                    self.tb_writer.add_scalar(k, v, self.global_steps)
+
             if 'metrics' in output:
                 for k, v in output['metrics'].items():
                     reduced_s = reduce_loss(v)
@@ -148,14 +155,15 @@ class PointPillarsTrainer(BaseTrainer):
                 self.tb_writer.add_scalar('train/loss', reduced_loss.item(), self.global_steps)
                 self.tb_writer.add_scalar('train/lr', lr, self.global_steps)
                 for k, v in loss_dict.items():
-                    self.tb_writer.add_scalar(f'train/loss/{k}', v.item(), self.global_steps)
+                    self.tb_writer.add_scalar(f'loss/{k}', v.item(), self.global_steps)  # todo
                     # self.tb_writer.add_scalar(f'train/loss/smooth_{k}', loss_ams[k].avg, self.global_steps)
-                bar_vals = {'epoch': epoch, 'phase': 'train', 'loss': loss_meter.avg}
+                    bar_vals = {'epoch': epoch, 'phase': 'train', 'loss': loss_meter.avg}
                 for k, v in metrics.items():
                     # if k not in metric_ams.keys():
                     #     metric_ams[k] = AverageMeter()
                     # metric_ams[k].update(v.item())
-                    self.tb_writer.add_scalar(f'train/{k}', v.item(), self.global_steps)
+                    if v.numel() == 1:
+                        self.tb_writer.add_scalar(f'metrics/{k}', v.item(), self.global_steps)  # todo
                     # self.tb_writer.add_scalar(f'train/smooth_{k}', metric_ams[k].avg, self.global_steps)
                     # bar_vals[k] = metric_ams[k].avg
                 bar.set_postfix(bar_vals)

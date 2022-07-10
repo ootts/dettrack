@@ -399,7 +399,7 @@ class PolygonList(object):
         elif isinstance(polygons, PolygonList):
             size = polygons.size
             self.validvec = polygons.validvec
-            polygons = polygons.polygons            
+            polygons = polygons.polygons
             First = False
 
         else:
@@ -410,10 +410,9 @@ class PolygonList(object):
 
         assert isinstance(size, (list, tuple)), str(type(size))
 
-    
         if First:
             self.validvec = []
-        self.polygons = []        
+        self.polygons = []
         for p in polygons:
             p = PolygonInstance(p, size)
             if len(p) > 0:
@@ -556,7 +555,10 @@ class SegmentationMask(object):
 
     def convert(self, mode, retvalid=False):
         if mode == self.mode:
-            return self
+            if retvalid:
+                return None, self
+            else:
+                return self
 
         if mode == "poly":
             if retvalid:

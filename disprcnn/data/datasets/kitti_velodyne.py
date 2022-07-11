@@ -20,7 +20,7 @@ class KittiVelodyneDataset(Dataset):
     def __init__(self, cfg, split, transforms=None, ds_len=-1):
         self.total_cfg = cfg
         self.cfg = cfg.dataset.kitti_velodyne
-        info_path = self.cfg.info_path
+        info_path = self.cfg.info_path % split
         root_path = self.cfg.root_path
         num_point_features = self.cfg.num_point_features
         box_coder = GroundBox3dCoderTorch()

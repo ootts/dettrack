@@ -1,18 +1,24 @@
+import os.path as osp
 from abc import abstractmethod
 
 import numpy as np
 import torch.nn.functional as F
 import torch
 
+from disprcnn.structures.bounding_box import BoxList
+from dl_ext.vision_ext.datasets.kitti.io import load_calib, load_velodyne, load_image_2, load_label_2, load_image_info
+
 from torch import nn
 
 from disprcnn.modeling.models.pointpillars import metrics, ops, utils
 from disprcnn.modeling.models.pointpillars.submodules import PillarFeatureNet, PointPillarsScatter, RPN
 from disprcnn.modeling.models.pointpillars.utils import one_hot
+from disprcnn.structures.bounding_box_3d import Box3DList
 from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
 from disprcnn.utils.ppp_utils.losses import WeightedSmoothL1LocalizationLoss, SigmoidFocalClassificationLoss
 from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
 from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
+from disprcnn.utils.vis3d_ext import Vis3D
 
 
 class PointPillars(nn.Module):
@@ -106,6 +112,7 @@ class PointPillars(nn.Module):
         self.rpn_loc_loss = metrics.Scalar()
         self.rpn_total_loss = metrics.Scalar()
         self.register_buffer("global_step", torch.LongTensor(1).zero_())
+        self.dbg = self.total_cfg.dbg
 
     def update_global_step(self):
         self.global_step += 1
@@ -116,6 +123,13 @@ class PointPillars(nn.Module):
     def forward(self, example):
         """module's forward should always accept dict and return loss.
         """
+        vis3d = Vis3D(
+            xyz_pattern=('x', '-y', '-z'),
+            out_folder="dbg",
+            sequence="pointpillars_forward",
+            # auto_increase=,
+            enable=self.dbg,
+        )
         voxels = example["voxels"]
         num_points = example["num_points"]
         coors = example["coordinates"]
@@ -212,7 +226,43 @@ class PointPillars(nn.Module):
             outputs['metrics'] = metrics
             return outputs, loss_dict
         else:
-            return self.predict(example, preds_dict)
+            pred_dict = self.predict(example, preds_dict)
+            score_thresh = 0.05
+            score = pred_dict[0]['scores']
+            keep = score > score_thresh
+            score = score[keep]
+            box3d = pred_dict[0]['box3d_camera']
+            box3d = box3d[:, [0, 1, 2, 4, 5, 3, 6]][keep]
+            box2d = pred_dict[0]['bbox'][keep]
+            labels = pred_dict[0]['label_preds'][keep] + 1
+            KITTIROOT = osp.expanduser('~/Datasets/kitti')
+            imgid = example['image_idx'][0].item()
+            h, w, _ = load_image_info(KITTIROOT, 'training', imgid)
+            result = BoxList(box2d, (w, h))
+            box3d = Box3DList(box3d, "xyzhwl_ry")
+            result.add_field("box3d", box3d)
+            result.add_field("labels", labels)
+            result.add_field("scores", score)
+            result.add_field("imgid", imgid)
+            if self.dbg:
+                calib = load_calib(KITTIROOT, 'training', imgid)
+                lidar = load_velodyne(KITTIROOT, 'training', imgid)[:, :3]
+                img2 = load_image_2(KITTIROOT, 'training', imgid)
+                vis3d.add_image(img2, name=f"{imgid:06d}")
+                lidar = calib.lidar_to_rect(lidar)
+                vis3d.add_point_cloud(lidar)
+                if len(box3d) > 0:
+                    vis3d.add_boxes(box3d.convert("corners").bbox_3d.reshape(-1, 8, 3), name='pred')
+                labels = load_label_2(KITTIROOT, 'training', imgid, ['Car'])
+                gt_box3d = []
+                for label in labels:
+                    gt_box3d.append([label.x, label.y, label.z, label.h, label.w, label.l, label.ry])
+                if len(gt_box3d) > 0:
+                    gt_box3d = Box3DList(gt_box3d, 'xyzhwl_ry')
+                    vis3d.add_boxes(gt_box3d.convert('corners').bbox_3d.reshape(-1, 8, 3), name='gt')
+                print()
+            output = {'left': result, 'right': result}
+            return output, {}
 
     def predict(self, example, preds_dict):
         # t = time.time()
@@ -428,7 +478,7 @@ class PointPillars(nn.Module):
                     "image_idx": img_idx,
                 }
             predictions_dicts.append(predictions_dict)
-        # self.total_postprocess_time += time.time() - t
+
         return predictions_dicts
 
     def clear_time_metrics(self):

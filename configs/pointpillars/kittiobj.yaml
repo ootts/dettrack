@@ -38,8 +38,10 @@ dataset:
 test:
   do_visualization: False # todo
   visualizer: ""
-  evaluators: [ ]
+  evaluators: [ "kittiobj" ]
   batch_size: 1
+  save_predictions: True
+#  force_recompute: False
 
 dataloader:
   num_workers: 2

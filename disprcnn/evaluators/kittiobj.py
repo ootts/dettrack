@@ -1,3 +1,4 @@
+import torch
 import loguru
 import numpy as np
 import tqdm
@@ -21,10 +22,16 @@ def build(cfg):
             preds_per_img = []
             bbox = pred["left"].bbox.tolist()
             scores = pred["left"].get_field('scores').tolist()
-            for b, s in zip(bbox, scores):
+            if 'box3d' in pred['left'].extra_fields:
+                box3d = pred['left'].get_field('box3d').convert('xyzhwl_ry').bbox_3d.tolist()
+            else:
+                box3d = torch.zeros([len(bbox), 7]).tolist()
+            for b, s, b3d in zip(bbox, scores, box3d):
                 x1, y1, x2, y2 = b
+                x, y, z, h, w, l, ry = b3d
+                alpha = ry + np.arctan(-x / z)
                 preds_per_img.append(
-                    f'{label} -1 -1 -10 {x1} {y1} {x2} {y2} 0 0 0 0 0 0 0 {s}'
+                    f'{label} -1 -1 {alpha} {x1} {y1} {x2} {y2} {h} {w} {l} {x} {y} {z} {ry} {s}'
                 )
             with open(os.path.join(output_folder, imgid + '.txt'), 'w') as f:
                 f.writelines('\n'.join(preds_per_img))

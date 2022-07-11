@@ -3,9 +3,9 @@ import torch.nn.functional as F
 import torch
 
 from torch import nn
-from torch.nn import Sequential, GroupNorm
+from torch.nn import Sequential, Conv2d, ConvTranspose2d, BatchNorm2d
 
-from disprcnn.modeling.models.pointpillars.utils import get_paddings_indicator, change_default_args
+from disprcnn.modeling.models.pointpillars.utils import get_paddings_indicator
 
 
 class PFNLayer(nn.Module):
@@ -199,15 +199,15 @@ class RPN(nn.Module):
                  num_input_filters=128,
                  num_anchor_per_loc=2,
                  encode_background_as_zeros=True,
-                 use_direction_classifier=True,
-                 use_groupnorm=False,
-                 num_groups=32,
+                 # use_direction_classifier=True,
+                 # use_groupnorm=False,
+                 # num_groups=32,
                  use_bev=False,
                  box_code_size=7,
                  name='rpn'):
         super(RPN, self).__init__()
         self._num_anchor_per_loc = num_anchor_per_loc
-        self._use_direction_classifier = use_direction_classifier
+        # self._use_direction_classifier = use_direction_classifier
         self._use_bev = use_bev
         assert len(layer_nums) == 3
         assert len(layer_strides) == len(layer_nums)
@@ -220,15 +220,13 @@ class RPN(nn.Module):
             factors.append(np.prod(layer_strides[:i + 1]) // upsample_strides[i])
         assert all([x == factors[0] for x in factors])
         assert use_norm
-        if use_groupnorm:
-            BatchNorm2d = change_default_args(
-                num_groups=num_groups, eps=1e-3)(GroupNorm)
-        else:
-            BatchNorm2d = change_default_args(
-                eps=1e-3, momentum=0.01)(nn.BatchNorm2d)
-        Conv2d = change_default_args(bias=False)(nn.Conv2d)
-        ConvTranspose2d = change_default_args(bias=False)(
-            nn.ConvTranspose2d)
+        # if use_groupnorm:
+        #     BatchNorm2d = change_default_args(
+        #         num_groups=num_groups, eps=1e-3)(GroupNorm)
+        # else:
+        # BatchNorm2d = change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm2d)
+        # Conv2d = change_default_args(bias=False)(nn.Conv2d)
+        # ConvTranspose2d = change_default_args(bias=False)(nn.ConvTranspose2d)
         # else:
         #     BatchNorm2d = Empty
         #     Conv2d = change_default_args(bias=True)(nn.Conv2d)
@@ -240,12 +238,12 @@ class RPN(nn.Module):
         block2_input_filters = num_filters[0]
         if use_bev:
             self.bev_extractor = Sequential(
-                Conv2d(6, 32, 3, padding=1),
-                BatchNorm2d(32),
+                Conv2d(6, 32, 3, padding=1, bias=False),
+                BatchNorm2d(32, eps=1e-3, momentum=0.01),
                 nn.ReLU(),
                 # nn.MaxPool2d(2, 2),
-                Conv2d(32, 64, 3, padding=1),
-                BatchNorm2d(64),
+                Conv2d(32, 64, 3, padding=1, bias=False),
+                BatchNorm2d(64, eps=1e-3, momentum=0.01),
                 nn.ReLU(),
                 nn.MaxPool2d(2, 2),
             )
@@ -253,14 +251,14 @@ class RPN(nn.Module):
         block1 = [
             nn.ZeroPad2d(1),
             Conv2d(
-                num_input_filters, num_filters[0], 3, stride=layer_strides[0]),
-            BatchNorm2d(num_filters[0]),
+                num_input_filters, num_filters[0], 3, stride=layer_strides[0], bias=False),
+            BatchNorm2d(num_filters[0], eps=1e-3, momentum=0.01),
             nn.ReLU(),
         ]
 
         for i in range(layer_nums[0]):
-            block1.append(Conv2d(num_filters[0], num_filters[0], 3, padding=1))
-            block1.append(BatchNorm2d(num_filters[0]))
+            block1.append(Conv2d(num_filters[0], num_filters[0], 3, padding=1, bias=False))
+            block1.append(BatchNorm2d(num_filters[0], eps=1e-3, momentum=0.01))
             block1.append(nn.ReLU())
         self.block1 = Sequential(*block1)
         self.deconv1 = Sequential(
@@ -268,8 +266,9 @@ class RPN(nn.Module):
                 num_filters[0],
                 num_upsample_filters[0],
                 upsample_strides[0],
-                stride=upsample_strides[0]),
-            BatchNorm2d(num_upsample_filters[0]),
+                stride=upsample_strides[0],
+                bias=False),
+            BatchNorm2d(num_upsample_filters[0], eps=1e-3, momentum=0.01),
             nn.ReLU(),
         )
         block2 = [nn.ZeroPad2d(1),
@@ -277,14 +276,15 @@ class RPN(nn.Module):
                       block2_input_filters,
                       num_filters[1],
                       3,
-                      stride=layer_strides[1]),
-                  BatchNorm2d(num_filters[1]),
+                      stride=layer_strides[1],
+                      bias=False),
+                  BatchNorm2d(num_filters[1], eps=1e-3, momentum=0.01),
                   nn.ReLU(), ]
 
         for i in range(layer_nums[1]):
             block2.append(
-                Conv2d(num_filters[1], num_filters[1], 3, padding=1))
-            block2.append(BatchNorm2d(num_filters[1]))
+                Conv2d(num_filters[1], num_filters[1], 3, padding=1, bias=False))
+            block2.append(BatchNorm2d(num_filters[1], eps=1e-3, momentum=0.01))
             block2.append(nn.ReLU())
         self.block2 = Sequential(*block2)
         self.deconv2 = Sequential(
@@ -292,17 +292,18 @@ class RPN(nn.Module):
                 num_filters[1],
                 num_upsample_filters[1],
                 upsample_strides[1],
-                stride=upsample_strides[1]),
-            BatchNorm2d(num_upsample_filters[1]),
+                stride=upsample_strides[1],
+                bias=False),
+            BatchNorm2d(num_upsample_filters[1], eps=1e-3, momentum=0.01),
             nn.ReLU(),
         )
         block3 = [nn.ZeroPad2d(1),
-                  Conv2d(num_filters[1], num_filters[2], 3, stride=layer_strides[2]),
-                  BatchNorm2d(num_filters[2]),
+                  Conv2d(num_filters[1], num_filters[2], 3, stride=layer_strides[2], bias=False),
+                  BatchNorm2d(num_filters[2], eps=1e-3, momentum=0.01),
                   nn.ReLU()]
         for i in range(layer_nums[2]):
-            block3.append(Conv2d(num_filters[2], num_filters[2], 3, padding=1))
-            block3.append(BatchNorm2d(num_filters[2]))
+            block3.append(Conv2d(num_filters[2], num_filters[2], 3, padding=1, bias=False))
+            block3.append(BatchNorm2d(num_filters[2], eps=1e-3, momentum=0.01))
             block3.append(nn.ReLU())
         self.block3 = Sequential(*block3)
         self.deconv3 = Sequential(
@@ -310,20 +311,19 @@ class RPN(nn.Module):
                 num_filters[2],
                 num_upsample_filters[2],
                 upsample_strides[2],
-                stride=upsample_strides[2]),
-            BatchNorm2d(num_upsample_filters[2]),
+                stride=upsample_strides[2],
+                bias=False),
+            BatchNorm2d(num_upsample_filters[2], eps=1e-3, momentum=0.01),
             nn.ReLU(),
         )
         if encode_background_as_zeros:
             num_cls = num_anchor_per_loc * num_class
         else:
             num_cls = num_anchor_per_loc * (num_class + 1)
-        self.conv_cls = nn.Conv2d(sum(num_upsample_filters), num_cls, 1)
-        self.conv_box = nn.Conv2d(
-            sum(num_upsample_filters), num_anchor_per_loc * box_code_size, 1)
-        if use_direction_classifier:
-            self.conv_dir_cls = nn.Conv2d(
-                sum(num_upsample_filters), num_anchor_per_loc * 2, 1)
+        self.conv_cls = Conv2d(sum(num_upsample_filters), num_cls, 1)
+        self.conv_box = Conv2d(sum(num_upsample_filters), num_anchor_per_loc * box_code_size, 1)
+        # if use_direction_classifier:
+        self.conv_dir_cls = Conv2d(sum(num_upsample_filters), num_anchor_per_loc * 2, 1)
 
     def forward(self, x, bev=None):
         x = self.block1(x)
@@ -346,8 +346,8 @@ class RPN(nn.Module):
             "box_preds": box_preds,
             "cls_preds": cls_preds,
         }
-        if self._use_direction_classifier:
-            dir_cls_preds = self.conv_dir_cls(x)
-            dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
-            ret_dict["dir_cls_preds"] = dir_cls_preds
+        # if self._use_direction_classifier:
+        dir_cls_preds = self.conv_dir_cls(x)
+        dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
+        ret_dict["dir_cls_preds"] = dir_cls_preds
         return ret_dict

@@ -29,7 +29,7 @@ class PointPillars(nn.Module):
         voxel_generator_cfg = self.total_cfg.voxel_generator
 
         self.num_class = self.cfg.num_classes
-        self.use_rotate_nms = self.cfg.use_rotate_nms
+        # self.use_rotate_nms = self.cfg.use_rotate_nms
         self.multiclass_nms = self.cfg.multiclass_nms
         self.nms_score_threshold = self.cfg.nms_score_threshold
         self.nms_pre_max_size = self.cfg.nms_pre_max_size
@@ -37,15 +37,14 @@ class PointPillars(nn.Module):
         self.nms_iou_threshold = self.cfg.nms_iou_threshold
         self.use_sigmoid_score = self.cfg.use_sigmoid_score
         self.encode_background_as_zeros = self.cfg.encode_background_as_zeros
-        self.use_sparse_rpn = False
-        self.use_direction_classifier = self.cfg.use_direction_classifier
+        # self.use_sparse_rpn = False
+        # self.use_direction_classifier = self.cfg.use_direction_classifier
         self.use_bev = self.cfg.use_bev
         self.total_forward_time = 0.0
         self.total_postprocess_time = 0.0
         self.total_inference_count = 0
         self.num_input_features = self.cfg.num_point_features
         self.lidar_only = self.cfg.lidar_only
-        # self.target_assigner = self.cfg.target_assigner
         self.box_coder = GroundBox3dCoderTorch()
         self.pos_cls_weight = self.cfg.pos_class_weight
         self.neg_cls_weight = self.cfg.neg_class_weight
@@ -69,7 +68,6 @@ class PointPillars(nn.Module):
             pc_range=voxel_generator_cfg.point_cloud_range
         )
         self.voxel_generator = build_voxel_generator(voxel_generator_cfg)
-        # bv_range = self.voxel_generator.point_cloud_range[[0, 1, 3, 4]]
         self.target_assigner = build_target_assigner(self.cfg.target_assigner, self.box_coder)
 
         grid_size = self.voxel_generator.grid_size
@@ -92,10 +90,8 @@ class PointPillars(nn.Module):
             num_input_filters=num_rpn_input_filters,
             num_anchor_per_loc=self.target_assigner.num_anchors_per_location,
             encode_background_as_zeros=self.cfg.encode_background_as_zeros,
-            use_direction_classifier=self.cfg.use_direction_classifier,
+            # use_direction_classifier=self.cfg.use_direction_classifier,
             use_bev=self.cfg.use_bev,
-            use_groupnorm=self.cfg.use_groupnorm,
-            num_groups=self.cfg.rpn.num_groups,
             box_code_size=self.target_assigner.box_coder.code_size)
 
         self.rpn_acc = metrics.Accuracy(
@@ -111,58 +107,36 @@ class PointPillars(nn.Module):
         self.rpn_cls_loss = metrics.Scalar()
         self.rpn_loc_loss = metrics.Scalar()
         self.rpn_total_loss = metrics.Scalar()
-        self.register_buffer("global_step", torch.LongTensor(1).zero_())
         self.dbg = self.total_cfg.dbg
 
-    def update_global_step(self):
-        self.global_step += 1
-
-    def get_global_step(self):
-        return int(self.global_step.cpu().numpy()[0])
-
-    def forward(self, example):
-        """module's forward should always accept dict and return loss.
-        """
+    def forward(self, dps):
         vis3d = Vis3D(
             xyz_pattern=('x', '-y', '-z'),
             out_folder="dbg",
             sequence="pointpillars_forward",
-            # auto_increase=,
             enable=self.dbg,
         )
-        voxels = example["voxels"]
-        num_points = example["num_points"]
-        coors = example["coordinates"]
-        batch_anchors = example["anchors"]
+        voxels = dps["voxels"]
+        num_points = dps["num_points"]
+        coors = dps["coordinates"]
+        batch_anchors = dps["anchors"]
         batch_size_dev = batch_anchors.shape[0]
-        # t = time.time()
         # features: [num_voxels, max_num_points_per_voxel, 7]
         # num_points: [num_voxels]
         # coors: [num_voxels, 4]
         voxel_features = self.voxel_feature_extractor(voxels, num_points, coors)
-        if self.use_sparse_rpn:
-            preds_dict = self.sparse_rpn(voxel_features, coors, batch_size_dev)
-        else:
-            spatial_features = self.middle_feature_extractor(
-                voxel_features, coors, batch_size_dev)
-            if self.use_bev:
-                preds_dict = self.rpn(spatial_features, example["bev_map"])
-            else:
-                preds_dict = self.rpn(spatial_features)
-        # preds_dict["voxel_features"] = voxel_features
-        # preds_dict["spatial_features"] = spatial_features
+        spatial_features = self.middle_feature_extractor(
+            voxel_features, coors, batch_size_dev)
+        preds_dict = self.rpn(spatial_features)
         box_preds = preds_dict["box_preds"]
         cls_preds = preds_dict["cls_preds"]
-        # self.total_forward_time += time.time() - t
         if self.training:
-            labels = example['labels']
-            reg_targets = example['reg_targets']
-
+            labels = dps['labels']
+            reg_targets = dps['reg_targets']
             cls_weights, reg_weights, cared = prepare_loss_weights(
                 labels,
                 pos_cls_weight=self.pos_cls_weight,
                 neg_cls_weight=self.neg_cls_weight,
-                # loss_norm_type=self.loss_norm_type,
                 dtype=voxels.dtype)
             cls_targets = labels * cared.type_as(labels)
             cls_targets = cls_targets.unsqueeze(-1)
@@ -193,20 +167,19 @@ class PointPillars(nn.Module):
 
             loss = loc_loss_reduced + cls_loss_reduced
 
-            if self.use_direction_classifier:
-                dir_targets = get_direction_target(example['anchors'],
-                                                   reg_targets)
-                dir_logits = preds_dict["dir_cls_preds"].view(
-                    batch_size_dev, -1, 2)
-                weights = (labels > 0).type_as(dir_logits)
-                weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)
-                dir_loss = self.dir_loss_ftor(
-                    dir_logits, dir_targets, weights=weights)
-                dir_loss = dir_loss.sum() / batch_size_dev
+            dir_targets = get_direction_target(dps['anchors'],
+                                               reg_targets)
+            dir_logits = preds_dict["dir_cls_preds"].view(
+                batch_size_dev, -1, 2)
+            weights = (labels > 0).type_as(dir_logits)
+            weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)
+            dir_loss = self.dir_loss_ftor(
+                dir_logits, dir_targets, weights=weights)
+            dir_loss = dir_loss.sum() / batch_size_dev
 
-                loss += dir_loss * self._direction_loss_weight
+            loss += dir_loss * self._direction_loss_weight
 
-                loss_dict['dir_loss'] = dir_loss * self.cfg.direction_loss_weight
+            loss_dict['dir_loss'] = dir_loss * self.cfg.direction_loss_weight
 
             outputs = {}
             metrics = {}  # todo
@@ -226,7 +199,7 @@ class PointPillars(nn.Module):
             outputs['metrics'] = metrics
             return outputs, loss_dict
         else:
-            pred_dict = self.predict(example, preds_dict)
+            pred_dict = self.predict(dps, preds_dict)
             score_thresh = 0.05
             score = pred_dict[0]['scores']
             keep = score > score_thresh
@@ -236,7 +209,7 @@ class PointPillars(nn.Module):
             box2d = pred_dict[0]['bbox'][keep]
             labels = pred_dict[0]['label_preds'][keep] + 1
             KITTIROOT = osp.expanduser('~/Datasets/kitti')
-            imgid = example['image_idx'][0].item()
+            imgid = dps['image_idx'][0].item()
             h, w, _ = load_image_info(KITTIROOT, 'training', imgid)
             result = BoxList(box2d, (w, h))
             box3d = Box3DList(box3d, "xyzhwl_ry")
@@ -293,11 +266,11 @@ class PointPillars(nn.Module):
                                                num_class_with_bg)
         batch_box_preds = self.box_coder.decode_torch(batch_box_preds,
                                                       batch_anchors)
-        if self.use_direction_classifier:
-            batch_dir_preds = preds_dict["dir_cls_preds"]
-            batch_dir_preds = batch_dir_preds.view(batch_size, -1, 2)
-        else:
-            batch_dir_preds = [None] * batch_size
+        # if self.use_direction_classifier:
+        batch_dir_preds = preds_dict["dir_cls_preds"]
+        batch_dir_preds = batch_dir_preds.view(batch_size, -1, 2)
+        # else:
+        #     batch_dir_preds = [None] * batch_size
 
         predictions_dicts = []
         for box_preds, cls_preds, dir_preds, rect, Trv2c, P2, img_idx, a_mask in zip(
@@ -307,11 +280,11 @@ class PointPillars(nn.Module):
             if a_mask is not None:
                 box_preds = box_preds[a_mask]
                 cls_preds = cls_preds[a_mask]
-            if self.use_direction_classifier:
-                if a_mask is not None:
-                    dir_preds = dir_preds[a_mask]
-                # print(dir_preds.shape)
-                dir_labels = torch.max(dir_preds, dim=-1)[1]
+            # if self.use_direction_classifier:
+            if a_mask is not None:
+                dir_preds = dir_preds[a_mask]
+            # print(dir_preds.shape)
+            dir_labels = torch.max(dir_preds, dim=-1)[1]
             if self.encode_background_as_zeros:
                 # this don't support softmax
                 assert self.use_sigmoid_score is True
@@ -323,7 +296,7 @@ class PointPillars(nn.Module):
                 else:
                     total_scores = F.softmax(cls_preds, dim=-1)[..., 1:]
             # Apply NMS in birdeye view
-            assert not self.use_rotate_nms
+            # assert not self.use_rotate_nms
             # nms_func = box_torch_ops.rotate_nms
             # else:
             nms_func = ops.nms
@@ -335,12 +308,11 @@ class PointPillars(nn.Module):
             if self.multiclass_nms:
                 # curently only support class-agnostic boxes.
                 boxes_for_nms = box_preds[:, [0, 1, 3, 4, 6]]
-                if not self.use_rotate_nms:
-                    box_preds_corners = ops.center_to_corner_box2d(
-                        boxes_for_nms[:, :2], boxes_for_nms[:, 2:4],
-                        boxes_for_nms[:, 4])
-                    boxes_for_nms = ops.corner_to_standup_nd(
-                        box_preds_corners)
+                box_preds_corners = ops.center_to_corner_box2d(
+                    boxes_for_nms[:, :2], boxes_for_nms[:, 2:4],
+                    boxes_for_nms[:, 4])
+                boxes_for_nms = ops.corner_to_standup_nd(
+                    box_preds_corners)
                 boxes_for_mcnms = boxes_for_nms.unsqueeze(1)
                 selected_per_class = ops.multiclass_nms(
                     nms_func=nms_func,
@@ -360,16 +332,15 @@ class PointPillars(nn.Module):
                         selected_boxes.append(box_preds[selected])
                         selected_labels.append(
                             torch.full([num_dets], i, dtype=torch.int64))
-                        if self.use_direction_classifier:
-                            selected_dir_labels.append(dir_labels[selected])
+                        # if self.use_direction_classifier:
+                        selected_dir_labels.append(dir_labels[selected])
                         selected_scores.append(total_scores[selected, i])
                 if len(selected_boxes) > 0:
                     selected_boxes = torch.cat(selected_boxes, dim=0)
                     selected_labels = torch.cat(selected_labels, dim=0)
                     selected_scores = torch.cat(selected_scores, dim=0)
-                    if self.use_direction_classifier:
-                        selected_dir_labels = torch.cat(
-                            selected_dir_labels, dim=0)
+                    # if self.use_direction_classifier:
+                    selected_dir_labels = torch.cat(selected_dir_labels, dim=0)
                 else:
                     selected_boxes = None
                     selected_labels = None
@@ -396,16 +367,15 @@ class PointPillars(nn.Module):
                 if top_scores.shape[0] != 0:
                     if self.nms_score_threshold > 0.0:
                         box_preds = box_preds[top_scores_keep]
-                        if self.use_direction_classifier:
-                            dir_labels = dir_labels[top_scores_keep]
+                        # if self.use_direction_classifier:
+                        dir_labels = dir_labels[top_scores_keep]
                         top_labels = top_labels[top_scores_keep]
                     boxes_for_nms = box_preds[:, [0, 1, 3, 4, 6]]
-                    if not self.use_rotate_nms:
-                        box_preds_corners = ops.center_to_corner_box2d(
-                            boxes_for_nms[:, :2], boxes_for_nms[:, 2:4],
-                            boxes_for_nms[:, 4])
-                        boxes_for_nms = ops.corner_to_standup_nd(
-                            box_preds_corners)
+                    box_preds_corners = ops.center_to_corner_box2d(
+                        boxes_for_nms[:, :2], boxes_for_nms[:, 2:4],
+                        boxes_for_nms[:, 4])
+                    boxes_for_nms = ops.corner_to_standup_nd(
+                        box_preds_corners)
                     # the nms in 3d detection just remove overlap boxes.
                     selected = nms_func(
                         boxes_for_nms,
@@ -418,8 +388,8 @@ class PointPillars(nn.Module):
                     selected = None
                 if selected is not None:
                     selected_boxes = box_preds[selected]
-                    if self.use_direction_classifier:
-                        selected_dir_labels = dir_labels[selected]
+                    # if self.use_direction_classifier:
+                    selected_dir_labels = dir_labels[selected]
                     selected_labels = top_labels[selected]
                     selected_scores = top_scores[selected]
             # finally generate predictions.
@@ -428,15 +398,15 @@ class PointPillars(nn.Module):
                 box_preds = selected_boxes
                 scores = selected_scores
                 label_preds = selected_labels
-                if self.use_direction_classifier:
-                    dir_labels = selected_dir_labels
-                    opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.byte()
-                    box_preds[..., -1] += torch.where(
-                        opp_labels,
-                        torch.tensor(np.pi).type_as(box_preds),
-                        torch.tensor(0.0).type_as(box_preds))
-                    # box_preds[..., -1] += (
-                    #     ~(dir_labels.byte())).type_as(box_preds) * np.pi
+                # if self.use_direction_classifier:
+                dir_labels = selected_dir_labels
+                opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.byte()
+                box_preds[..., -1] += torch.where(
+                    opp_labels,
+                    torch.tensor(np.pi).type_as(box_preds),
+                    torch.tensor(0.0).type_as(box_preds))
+                # box_preds[..., -1] += (
+                #     ~(dir_labels.byte())).type_as(box_preds) * np.pi
                 final_box_preds = box_preds
                 final_scores = scores
                 final_labels = label_preds
@@ -481,18 +451,6 @@ class PointPillars(nn.Module):
 
         return predictions_dicts
 
-    def clear_time_metrics(self):
-        self.total_forward_time = 0.0
-        self.total_postprocess_time = 0.0
-        self.total_inference_count = 0
-
-    def metrics_to_float(self):
-        self.rpn_acc.float()
-        self.rpn_metrics.float()
-        self.rpn_cls_loss.float()
-        self.rpn_loc_loss.float()
-        self.rpn_total_loss.float()
-
     def update_metrics(self,
                        cls_loss,
                        loc_loss,
@@ -521,13 +479,6 @@ class PointPillars(nn.Module):
             ret[f"prec@{int(thresh * 100)}"] = float(prec[i])
             ret[f"rec@{int(thresh * 100)}"] = float(recall[i])
         return ret
-
-    def clear_metrics(self):
-        self.rpn_acc.clear()
-        self.rpn_metrics.clear()
-        self.rpn_cls_loss.clear()
-        self.rpn_loc_loss.clear()
-        self.rpn_total_loss.clear()
 
 
 def prepare_loss_weights(labels,

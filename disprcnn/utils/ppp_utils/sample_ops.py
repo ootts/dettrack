@@ -7,6 +7,7 @@ from . import preprocess as prep, box_np_ops
 # from second.core import box_np_ops
 import copy
 
+from .box_np_ops import rotation_points_single_angle
 from .check import shape_mergeable
 from .preprocess import BatchSampler
 
@@ -99,7 +100,7 @@ class DataBaseSamplerV2:
                    rect=None,
                    Trv2c=None,
                    P2=None):
-        from disprcnn.data.datasets.kitti_velodyne import rotation_points_single_angle
+        # from disprcnn.data.datasets.kitti_velodyne import rotation_points_single_angle
         sampled_num_dict = {}
         sample_num_per_class = []
         for class_name, max_sample_num in zip(self._sample_classes,

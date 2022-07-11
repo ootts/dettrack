@@ -1,42 +1,40 @@
+import torch
 import pathlib
-from collections import OrderedDict
+import pickle
 
 import numba
 import numpy as np
-import pickle
-from functools import partial
+from torch.utils.data import Dataset
 
-from disprcnn.utils.ppp_utils.geometry import points_in_convex_polygon_jit, points_in_convex_polygon_3d_jit
-
+from disprcnn.structures.bounding_box_3d import Box3DList
+from disprcnn.utils.ppp_utils import preprocess as prep, kitti_common as kitti
+from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
 from disprcnn.utils.ppp_utils.box_np_ops import limit_period, rbbox2d_to_near_bbox, center_to_corner_box2d, \
     center_to_corner_box3d, minmax_to_corner_2d, rotation_points_single_angle, corner_to_surfaces_3d_jit, \
     box2d_to_corner_jit, corner_to_standup_nd_jit, points_in_rbbox, sparse_sum_for_anchors_mask, fused_get_anchors_area, \
-    box_camera_to_lidar
-from torch.utils.data import Dataset
-
-from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
-from disprcnn.utils.ppp_utils.sample_ops import DataBaseSamplerV2
+    box_camera_to_lidar, lidar_to_camera, box_lidar_to_camera
+from disprcnn.utils.ppp_utils.geometry import points_in_convex_polygon_jit, points_in_convex_polygon_3d_jit
 from disprcnn.utils.ppp_utils.preprocess import DataBasePreprocessor
-from disprcnn.utils.ppp_utils import preprocess as prep, kitti_common as kitti
+from disprcnn.utils.ppp_utils.sample_ops import DataBaseSamplerV2
 from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
 from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
+from disprcnn.utils.vis3d_ext import Vis3D
 
 
 class KittiVelodyneDataset(Dataset):
     def __init__(self, cfg, split, transforms=None, ds_len=-1):
         self.total_cfg = cfg
         self.cfg = cfg.dataset.kitti_velodyne
+        self.split = split
         info_path = self.cfg.info_path % split
-        root_path = self.cfg.root_path
         num_point_features = self.cfg.num_point_features
         box_coder = GroundBox3dCoderTorch()  # todo??
         target_assigner = build_target_assigner(self.total_cfg.model.pointpillars.target_assigner, box_coder)  # todo?
         feature_map_size = self.cfg.feature_map_size
         with open(info_path, 'rb') as f:
             infos = pickle.load(f)
-        self._root_path = root_path
-        self._kitti_infos = infos
-        self._num_point_features = num_point_features
+        self.kitti_infos = infos
+        self.num_point_features = num_point_features
         # generate anchors cache
         ret = target_assigner.generate_anchors(feature_map_size)  # [352, 400]
         anchors = ret["anchors"]
@@ -50,344 +48,223 @@ class KittiVelodyneDataset(Dataset):
             "matched_thresholds": matched_thresholds,
             "unmatched_thresholds": unmatched_thresholds,
         }
-        training = 'train' in split
-        db_sampler = build_db_sampler(self.cfg.db_sampler)
-        voxel_generator = build_voxel_generator(self.total_cfg.voxel_generator)
-        prep_func = partial(
-            prep_pointcloud,
-            root_path=self.cfg.root_path,
-            class_names=list(self.cfg.class_names),
-            voxel_generator=voxel_generator,
-            target_assigner=target_assigner,
-            training=training,
-            max_voxels=self.cfg.max_number_of_voxels,
-            shuffle_points=self.cfg.shuffle_points,
-            gt_rotation_noise=list(self.cfg.groundtruth_rotation_uniform_noise),
-            gt_loc_noise_std=list(self.cfg.groundtruth_localization_noise_std),
-            global_rotation_noise=list(self.cfg.global_rotation_uniform_noise),
-            global_scaling_noise=list(self.cfg.global_scaling_uniform_noise),
-            global_loc_noise_std=(0.2, 0.2, 0.2),
-            global_random_rot_range=list(self.cfg.global_random_rotation_range_per_object),
-            db_sampler=db_sampler,
-            without_reflectivity=self.cfg.without_reflectivity,
-            num_point_features=num_point_features,
-            anchor_area_threshold=self.cfg.anchor_area_threshold,
-            remove_points_after_sample=self.cfg.remove_points_after_sample,
-        )
-        self._prep_func = partial(prep_func, anchor_cache=anchor_cache)
+        self.db_sampler = build_db_sampler(self.cfg.db_sampler)
+        self.voxel_generator = build_voxel_generator(self.total_cfg.voxel_generator)
+        self.anchor_cache = anchor_cache
+        self.target_assigner = target_assigner
 
     def __len__(self):
-        return len(self._kitti_infos)
-
-    @property
-    def kitti_infos(self):
-        return self._kitti_infos
+        return len(self.kitti_infos)
 
     def __getitem__(self, idx):
-        example = _read_and_prep_v9(
-            info=self._kitti_infos[idx],
-            root_path=self._root_path,
-            num_point_features=self._num_point_features,
-            prep_func=self._prep_func)
+        info = self.kitti_infos[idx]
+        root_path = self.cfg.root_path
+        v_path = pathlib.Path(root_path) / info['velodyne_path']
+        v_path = v_path.parent.parent / (v_path.parent.stem + "_reduced") / v_path.name
+
+        points = np.fromfile(str(v_path), dtype=np.float32).reshape([-1, self.num_point_features])
+        image_idx = info['image_idx']
+        rect = info['calib/R0_rect'].astype(np.float32)
+        Trv2c = info['calib/Tr_velo_to_cam'].astype(np.float32)
+        P2 = info['calib/P2'].astype(np.float32)
+
+        input_dict = {
+            'points': points,
+            'rect': rect,
+            'Trv2c': Trv2c,
+            'P2': P2,
+            'image_shape': np.array(info["img_shape"], dtype=np.int32),
+            'image_idx': image_idx,
+            'image_path': info['img_path'],
+        }
+
+        if 'annos' in info:
+            annos = info['annos']
+            # we need other objects to avoid collision when sample
+            annos = kitti.remove_dontcare(annos)
+            loc = annos["location"]
+            dims = annos["dimensions"]
+            rots = annos["rotation_y"]
+            gt_names = annos["name"]
+            gt_boxes = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+            difficulty = annos["difficulty"]
+            input_dict.update({
+                'gt_boxes': gt_boxes,
+                'gt_names': gt_names,
+                'difficulty': difficulty,
+            })
+            if 'group_ids' in annos:
+                input_dict['group_ids'] = annos["group_ids"]
+        example = self.prep_pointcloud(input_dict=input_dict)
+        example["image_idx"] = image_idx
+        example["image_shape"] = input_dict["image_shape"]
+        if "anchors_mask" in example:
+            example["anchors_mask"] = example["anchors_mask"].astype(np.uint8)
         example.pop('num_voxels')
         return example
 
+    def prep_pointcloud(self, input_dict):
+        root_path = self.cfg.root_path
+        class_names = list(self.cfg.class_names)
+        voxel_generator = self.voxel_generator
+        target_assigner = self.target_assigner
+        training = 'train' in self.split
+        max_voxels = self.cfg.max_number_of_voxels
+        shuffle_points = self.cfg.shuffle_points
+        gt_rotation_noise = list(self.cfg.groundtruth_rotation_uniform_noise)
+        gt_loc_noise_std = list(self.cfg.groundtruth_localization_noise_std)
+        global_rotation_noise = list(self.cfg.global_rotation_uniform_noise)
+        global_scaling_noise = list(self.cfg.global_scaling_uniform_noise)
+        global_loc_noise_std = (0.2, 0.2, 0.2)
+        global_random_rot_range = list(self.cfg.global_random_rotation_range_per_object)
+        db_sampler = self.db_sampler
+        without_reflectivity = self.cfg.without_reflectivity
+        anchor_area_threshold = self.cfg.anchor_area_threshold
+        remove_points_after_sample = self.cfg.remove_points_after_sample
+        anchor_cache = self.anchor_cache
+        num_point_features = self.num_point_features
+        # #####
+        points = input_dict["points"]
+        if training:
+            gt_boxes = input_dict["gt_boxes"]
+            gt_names = input_dict["gt_names"]
+        rect = input_dict["rect"]
+        Trv2c = input_dict["Trv2c"]
+        P2 = input_dict["P2"]
+        vis3d = Vis3D(
+            xyz_pattern=('x', '-y', '-z'),
+            out_folder="dbg",
+            sequence="kitti_velodyne_loader_prep",
+            # auto_increase=,
+            enable=self.total_cfg.dbg,
+        )
+        if training:
+            selected = kitti.drop_arrays_by_name(gt_names, ["DontCare"])
+            gt_boxes = gt_boxes[selected]
+            gt_names = gt_names[selected]
 
-def prep_pointcloud(input_dict,
-                    root_path,
-                    voxel_generator,
-                    target_assigner,
-                    db_sampler=None,
-                    max_voxels=20000,
-                    class_names=['Car'],
-                    training=True,
-                    shuffle_points=False,
-                    gt_rotation_noise=[-np.pi / 3, np.pi / 3],
-                    gt_loc_noise_std=[1.0, 1.0, 1.0],
-                    global_rotation_noise=[-np.pi / 4, np.pi / 4],
-                    global_scaling_noise=[0.95, 1.05],
-                    global_loc_noise_std=(0.2, 0.2, 0.2),
-                    global_random_rot_range=[0.78, 2.35],
-                    without_reflectivity=False,
-                    num_point_features=4,
-                    anchor_area_threshold=1,
-                    remove_points_after_sample=True,
-                    anchor_cache=None,
-                    random_crop=False,
-                    # out_size_factor=2,
-                    # bev_only=False,
-                    # use_group_id=False
-                    ):
-    """convert point cloud to voxels, create targets if ground truths
-    exists.
-    """
-    points = input_dict["points"]
-    if training:
-        gt_boxes = input_dict["gt_boxes"]
-        gt_names = input_dict["gt_names"]
-        # difficulty = input_dict["difficulty"]
-        # group_ids = None
-        # if use_group_id and "group_ids" in input_dict:
-        #     group_ids = input_dict["group_ids"]
-    rect = input_dict["rect"]
-    Trv2c = input_dict["Trv2c"]
-    P2 = input_dict["P2"]
+            gt_boxes = box_camera_to_lidar(gt_boxes, rect, Trv2c)
+            gt_boxes_mask = np.array([n in class_names for n in gt_names], dtype=np.bool_)
+            assert db_sampler is not None
+            sampled_dict = db_sampler.sample_all(root_path, gt_boxes, gt_names, num_point_features, False,
+                                                 rect=rect, Trv2c=Trv2c, P2=P2)
+            # if self.total_cfg.dbg:
 
-    if training:
-        # print(gt_names)
-        selected = kitti.drop_arrays_by_name(gt_names, ["DontCare"])
-        gt_boxes = gt_boxes[selected]
-        gt_names = gt_names[selected]
+            vis3d.add_point_cloud(lidar_to_camera(sampled_dict['points'][:, :3], rect, Trv2c))
+            box3d = box_lidar_to_camera(sampled_dict['gt_boxes'], rect, Trv2c)
+            box3d = Box3DList(torch.from_numpy(box3d[:, [0, 1, 2, 4, 5, 3, 6]]).float(), "xyzhwl_ry")
+            vis3d.add_box3dlist(box3d)
+            # xyz_lidar, w, l, h, r
+            if sampled_dict is not None:
+                sampled_gt_names = sampled_dict["gt_names"]
+                sampled_gt_boxes = sampled_dict["gt_boxes"]
+                sampled_points = sampled_dict["points"]
+                sampled_gt_masks = sampled_dict["gt_masks"]
+                gt_names = np.concatenate([gt_names, sampled_gt_names], axis=0)
+                gt_boxes = np.concatenate([gt_boxes, sampled_gt_boxes])
+                gt_boxes_mask = np.concatenate([gt_boxes_mask, sampled_gt_masks], axis=0)
 
-        gt_boxes = box_camera_to_lidar(gt_boxes, rect, Trv2c)
-        gt_boxes_mask = np.array(
-            [n in class_names for n in gt_names], dtype=np.bool_)
-        assert db_sampler is not None
-        sampled_dict = db_sampler.sample_all(root_path, gt_boxes, gt_names, num_point_features, random_crop,
-                                             rect=rect, Trv2c=Trv2c, P2=P2)
+                if remove_points_after_sample:  # not entered
+                    points = remove_points_in_boxes(points, sampled_gt_boxes)
 
-        if sampled_dict is not None:
-            sampled_gt_names = sampled_dict["gt_names"]
-            sampled_gt_boxes = sampled_dict["gt_boxes"]
-            sampled_points = sampled_dict["points"]
-            sampled_gt_masks = sampled_dict["gt_masks"]
-            gt_names = np.concatenate([gt_names, sampled_gt_names], axis=0)
-            gt_boxes = np.concatenate([gt_boxes, sampled_gt_boxes])
-            gt_boxes_mask = np.concatenate([gt_boxes_mask, sampled_gt_masks], axis=0)
+                points = np.concatenate([sampled_points, points], axis=0)
 
-            if remove_points_after_sample:  # not entered
-                points = remove_points_in_boxes(
-                    points, sampled_gt_boxes)
+                vis3d.add_point_cloud(lidar_to_camera(points[:, :3], rect, Trv2c))
+                box3d = box_lidar_to_camera(gt_boxes, rect, Trv2c)
+                box3d = Box3DList(torch.from_numpy(box3d[:, [0, 1, 2, 4, 5, 3, 6]]).float(), "xyzhwl_ry")
+                vis3d.add_box3dlist(box3d)
+            if without_reflectivity:  # not entered
+                used_point_axes = list(range(num_point_features))
+                used_point_axes.pop(3)
+                points = points[:, used_point_axes]
+            noise_per_object_v3_(
+                gt_boxes,
+                points,
+                gt_boxes_mask,
+                rotation_perturb=gt_rotation_noise,
+                center_noise_std=gt_loc_noise_std,
+                global_random_rot_range=global_random_rot_range,
+                num_try=100)
+            vis3d.add_point_cloud(lidar_to_camera(points[:, :3], rect, Trv2c))
+            box3d = box_lidar_to_camera(gt_boxes, rect, Trv2c)
+            box3d = Box3DList(torch.from_numpy(box3d[:, [0, 1, 2, 4, 5, 3, 6]]).float(), "xyzhwl_ry")
+            vis3d.add_box3dlist(box3d)
+            # should remove unrelated objects after noise per object
+            gt_boxes = gt_boxes[gt_boxes_mask]
+            gt_names = gt_names[gt_boxes_mask]
+            gt_classes = np.array([class_names.index(n) + 1 for n in gt_names], dtype=np.int32)
 
-            points = np.concatenate([sampled_points, points], axis=0)
-        if without_reflectivity:  # not entered
-            used_point_axes = list(range(num_point_features))
-            used_point_axes.pop(3)
-            points = points[:, used_point_axes]
-        noise_per_object_v3_(
-            gt_boxes,
-            points,
-            gt_boxes_mask,
-            rotation_perturb=gt_rotation_noise,
-            center_noise_std=gt_loc_noise_std,
-            global_random_rot_range=global_random_rot_range,
-            num_try=100)
-        # should remove unrelated objects after noise per object
-        gt_boxes = gt_boxes[gt_boxes_mask]
-        gt_names = gt_names[gt_boxes_mask]
-        gt_classes = np.array([class_names.index(n) + 1 for n in gt_names], dtype=np.int32)
+            vis3d.add_point_cloud(lidar_to_camera(points[:, :3], rect, Trv2c))
+            box3d = box_lidar_to_camera(gt_boxes, rect, Trv2c)
+            box3d = Box3DList(torch.from_numpy(box3d[:, [0, 1, 2, 4, 5, 3, 6]]).float(), "xyzhwl_ry")
+            vis3d.add_box3dlist(box3d)
 
-        gt_boxes, points = random_flip(gt_boxes, points)
-        gt_boxes, points = global_rotation(
-            gt_boxes, points, rotation=global_rotation_noise)
-        gt_boxes, points = global_scaling_v2(gt_boxes, points,
-                                             *global_scaling_noise)
+            gt_boxes, points = random_flip(gt_boxes, points)
+            gt_boxes, points = global_rotation(gt_boxes, points, rotation=global_rotation_noise)
+            gt_boxes, points = global_scaling_v2(gt_boxes, points, *global_scaling_noise)
 
-        # Global translation
-        gt_boxes, points = global_translate(gt_boxes, points, global_loc_noise_std)
+            # Global translation
+            gt_boxes, points = global_translate(gt_boxes, points, global_loc_noise_std)
 
-        bv_range = voxel_generator.point_cloud_range[[0, 1, 3, 4]]
-        mask = filter_gt_box_outside_range(gt_boxes, bv_range)
-        gt_boxes = gt_boxes[mask]
-        gt_classes = gt_classes[mask]
+            bv_range = voxel_generator.point_cloud_range[[0, 1, 3, 4]]
+            mask = filter_gt_box_outside_range(gt_boxes, bv_range)
+            gt_boxes = gt_boxes[mask]
+            gt_classes = gt_classes[mask]
 
-        # limit rad to [-pi, pi]
-        gt_boxes[:, 6] = limit_period(
-            gt_boxes[:, 6], offset=0.5, period=2 * np.pi)
+            # limit rad to [-pi, pi]
+            gt_boxes[:, 6] = limit_period(gt_boxes[:, 6], offset=0.5, period=2 * np.pi)
 
-    if shuffle_points:
-        # shuffle is a little slow.
-        np.random.shuffle(points)
+            vis3d.add_point_cloud(lidar_to_camera(points[:, :3], rect, Trv2c))
+            box3d = box_lidar_to_camera(gt_boxes, rect, Trv2c)
+            box3d = Box3DList(torch.from_numpy(box3d[:, [0, 1, 2, 4, 5, 3, 6]]).float(), "xyzhwl_ry")
+            vis3d.add_box3dlist(box3d)
+        if shuffle_points:
+            # shuffle is a little slow.
+            np.random.shuffle(points)
 
-    # [0, -40, -3, 70.4, 40, 1]
-    voxel_size = voxel_generator.voxel_size
-    pc_range = voxel_generator.point_cloud_range
-    grid_size = voxel_generator.grid_size
-    # [352, 400]
+        # [0, -40, -3, 70.4, 40, 1]
+        voxel_size = voxel_generator.voxel_size
+        pc_range = voxel_generator.point_cloud_range
+        grid_size = voxel_generator.grid_size
+        # [352, 400]
 
-    voxels, coordinates, num_points = voxel_generator.generate(
-        points, max_voxels)
+        voxels, coordinates, num_points = voxel_generator.generate(points, max_voxels)
 
-    example = {
-        'voxels': voxels,
-        'num_points': num_points,
-        'coordinates': coordinates,
-        "num_voxels": np.array([voxels.shape[0]], dtype=np.int64),
-        'rect': rect,
-        'Trv2c': Trv2c,
-        'P2': P2,
-    }
-    anchors = anchor_cache["anchors"]
-    anchors_bv = anchor_cache["anchors_bv"]
-    matched_thresholds = anchor_cache["matched_thresholds"]
-    unmatched_thresholds = anchor_cache["unmatched_thresholds"]
-    example["anchors"] = anchors
-    anchors_mask = None
-    if anchor_area_threshold >= 0:
-        coors = coordinates
-        dense_voxel_map = sparse_sum_for_anchors_mask(
-            coors, tuple(grid_size[::-1][1:]))
-        dense_voxel_map = dense_voxel_map.cumsum(0)
-        dense_voxel_map = dense_voxel_map.cumsum(1)
-        anchors_area = fused_get_anchors_area(
-            dense_voxel_map, anchors_bv, voxel_size, pc_range, grid_size)
-        anchors_mask = anchors_area > anchor_area_threshold
-        example['anchors_mask'] = anchors_mask
-    if training:
-        targets_dict = target_assigner.assign(
-            anchors, gt_boxes, anchors_mask, gt_classes=gt_classes,
-            matched_thresholds=matched_thresholds, unmatched_thresholds=unmatched_thresholds)
-        example.update({
-            'labels': targets_dict['labels'],
-            'reg_targets': targets_dict['bbox_targets'],
-            'reg_weights': targets_dict['bbox_outside_weights'],
-        })
-    return example
-
-
-def _read_and_prep_v9(info, root_path, num_point_features, prep_func):
-    v_path = pathlib.Path(root_path) / info['velodyne_path']
-    v_path = v_path.parent.parent / (v_path.parent.stem + "_reduced") / v_path.name
-
-    points = np.fromfile(str(v_path), dtype=np.float32).reshape([-1, num_point_features])
-    image_idx = info['image_idx']
-    rect = info['calib/R0_rect'].astype(np.float32)
-    Trv2c = info['calib/Tr_velo_to_cam'].astype(np.float32)
-    P2 = info['calib/P2'].astype(np.float32)
-
-    input_dict = {
-        'points': points,
-        'rect': rect,
-        'Trv2c': Trv2c,
-        'P2': P2,
-        'image_shape': np.array(info["img_shape"], dtype=np.int32),
-        'image_idx': image_idx,
-        'image_path': info['img_path'],
-    }
-
-    if 'annos' in info:
-        annos = info['annos']
-        # we need other objects to avoid collision when sample
-        annos = kitti.remove_dontcare(annos)
-        loc = annos["location"]
-        dims = annos["dimensions"]
-        rots = annos["rotation_y"]
-        gt_names = annos["name"]
-        gt_boxes = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
-        difficulty = annos["difficulty"]
-        input_dict.update({
-            'gt_boxes': gt_boxes,
-            'gt_names': gt_names,
-            'difficulty': difficulty,
-        })
-        if 'group_ids' in annos:
-            input_dict['group_ids'] = annos["group_ids"]
-    example = prep_func(input_dict=input_dict)
-    example["image_idx"] = image_idx
-    example["image_shape"] = input_dict["image_shape"]
-    if "anchors_mask" in example:
-        example["anchors_mask"] = example["anchors_mask"].astype(np.uint8)
-    return example
-
-
-def points_to_bev(points,
-                  voxel_size,
-                  coors_range,
-                  with_reflectivity=False,
-                  density_norm_num=16,
-                  max_voxels=40000):
-    """convert kitti points(N, 4) to a bev map. return [C, H, W] map.
-    this function based on algorithm in points_to_voxel.
-    takes 5ms in a reduced pointcloud with voxel_size=[0.1, 0.1, 0.8]
-
-    Args:
-        points: [N, ndim] float tensor. points[:, :3] contain xyz points and
-            points[:, 3] contain reflectivity.
-        voxel_size: [3] list/tuple or array, float. xyz, indicate voxel size
-        coors_range: [6] list/tuple or array, float. indicate voxel range.
-            format: xyzxyz, minmax
-        with_reflectivity: bool. if True, will add a intensity map to bev map.
-    Returns:
-        bev_map: [num_height_maps + 1(2), H, W] float tensor.
-            `WARNING`: bev_map[-1] is num_points map, NOT density map,
-            because calculate density map need more time in cpu rather than gpu.
-            if with_reflectivity is True, bev_map[-2] is intensity map.
-    """
-    if not isinstance(voxel_size, np.ndarray):
-        voxel_size = np.array(voxel_size, dtype=points.dtype)
-    if not isinstance(coors_range, np.ndarray):
-        coors_range = np.array(coors_range, dtype=points.dtype)
-    voxelmap_shape = (coors_range[3:] - coors_range[:3]) / voxel_size
-    voxelmap_shape = tuple(np.round(voxelmap_shape).astype(np.int32).tolist())
-    voxelmap_shape = voxelmap_shape[::-1]  # DHW format
-    coor_to_voxelidx = -np.ones(shape=voxelmap_shape, dtype=np.int32)
-    # coors_2d = np.zeros(shape=(max_voxels, 2), dtype=np.int32)
-    bev_map_shape = list(voxelmap_shape)
-    bev_map_shape[0] += 1
-    height_lowers = np.linspace(
-        coors_range[2], coors_range[5], voxelmap_shape[0], endpoint=False)
-    if with_reflectivity:
-        bev_map_shape[0] += 1
-    bev_map = np.zeros(shape=bev_map_shape, dtype=points.dtype)
-    _points_to_bevmap_reverse_kernel(
-        points, voxel_size, coors_range, coor_to_voxelidx, bev_map,
-        height_lowers, with_reflectivity, max_voxels)
-    return bev_map
-
-
-@numba.jit(nopython=True)
-def _points_to_bevmap_reverse_kernel(points,
-                                     voxel_size,
-                                     coors_range,
-                                     coor_to_voxelidx,
-                                     # coors_2d,
-                                     bev_map,
-                                     height_lowers,
-                                     # density_norm_num=16,
-                                     with_reflectivity=False,
-                                     max_voxels=40000):
-    # put all computations to one loop.
-    # we shouldn't create large array in main jit code, otherwise
-    # reduce performance
-    N = points.shape[0]
-    ndim = points.shape[1] - 1
-    # ndim = 3
-    ndim_minus_1 = ndim - 1
-    grid_size = (coors_range[3:] - coors_range[:3]) / voxel_size
-    # np.round(grid_size)
-    # grid_size = np.round(grid_size).astype(np.int64)(np.int32)
-    grid_size = np.round(grid_size, 0, grid_size).astype(np.int32)
-    height_slice_size = voxel_size[-1]
-    coor = np.zeros(shape=(3,), dtype=np.int32)  # DHW
-    voxel_num = 0
-    failed = False
-    for i in range(N):
-        failed = False
-        for j in range(ndim):
-            c = np.floor((points[i, j] - coors_range[j]) / voxel_size[j])
-            if c < 0 or c >= grid_size[j]:
-                failed = True
-                break
-            coor[ndim_minus_1 - j] = c
-        if failed:
-            continue
-        voxelidx = coor_to_voxelidx[coor[0], coor[1], coor[2]]
-        if voxelidx == -1:
-            voxelidx = voxel_num
-            if voxel_num >= max_voxels:
-                break
-            voxel_num += 1
-            coor_to_voxelidx[coor[0], coor[1], coor[2]] = voxelidx
-            # coors_2d[voxelidx] = coor[1:]
-        bev_map[-1, coor[1], coor[2]] += 1
-        height_norm = bev_map[coor[0], coor[1], coor[2]]
-        incomimg_height_norm = (
-                                       points[i, 2] - height_lowers[coor[0]]) / height_slice_size
-        if incomimg_height_norm > height_norm:
-            bev_map[coor[0], coor[1], coor[2]] = incomimg_height_norm
-            if with_reflectivity:
-                bev_map[-2, coor[1], coor[2]] = points[i, 3]
-    # return voxel_num
+        example = {
+            'voxels': voxels,
+            'num_points': num_points,
+            'coordinates': coordinates,
+            "num_voxels": np.array([voxels.shape[0]], dtype=np.int64),
+            'rect': rect,
+            'Trv2c': Trv2c,
+            'P2': P2,
+        }
+        anchors = anchor_cache["anchors"]
+        anchors_bv = anchor_cache["anchors_bv"]
+        matched_thresholds = anchor_cache["matched_thresholds"]
+        unmatched_thresholds = anchor_cache["unmatched_thresholds"]
+        example["anchors"] = anchors
+        anchors_mask = None
+        if anchor_area_threshold >= 0:
+            coors = coordinates
+            dense_voxel_map = sparse_sum_for_anchors_mask(
+                coors, tuple(grid_size[::-1][1:]))
+            dense_voxel_map = dense_voxel_map.cumsum(0)
+            dense_voxel_map = dense_voxel_map.cumsum(1)
+            anchors_area = fused_get_anchors_area(
+                dense_voxel_map, anchors_bv, voxel_size, pc_range, grid_size)
+            anchors_mask = anchors_area > anchor_area_threshold
+            example['anchors_mask'] = anchors_mask
+        if training:
+            targets_dict = target_assigner.assign(
+                anchors, gt_boxes, anchors_mask, gt_classes=gt_classes,
+                matched_thresholds=matched_thresholds, unmatched_thresholds=unmatched_thresholds)
+            example.update({
+                'labels': targets_dict['labels'],
+                'reg_targets': targets_dict['bbox_targets'],
+                'reg_weights': targets_dict['bbox_outside_weights'],
+            })
+        return example
 
 
 def random_flip(gt_boxes, points, probability=0.5):

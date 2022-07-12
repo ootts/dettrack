@@ -1,3 +1,4 @@
+import torch
 import numba
 from pathlib import Path
 import numpy as np
@@ -254,9 +255,16 @@ def rbbox2d_to_near_bbox(rbboxes):
         bboxes: [N, 4(xmin, ymin, xmax, ymax)] bboxes
     """
     rots = rbboxes[..., -1]
-    rots_0_pi_div_2 = np.abs(limit_period(rots, 0.5, np.pi))
-    cond = (rots_0_pi_div_2 > np.pi / 4)[..., np.newaxis]
-    bboxes_center = np.where(cond, rbboxes[:, [0, 1, 3, 2]], rbboxes[:, :4])
+    rots_0_pi_div_2 = (limit_period(rots, 0.5, np.pi))
+    if isinstance(rots_0_pi_div_2, torch.Tensor):
+        rots_0_pi_div_2 = rots_0_pi_div_2.abs()
+    else:
+        rots_0_pi_div_2 = np.abs(rots_0_pi_div_2)
+    cond = (rots_0_pi_div_2 > np.pi / 4)[..., None]
+    if isinstance(cond, torch.Tensor):
+        bboxes_center = torch.where(cond, rbboxes[:, [0, 1, 3, 2]], rbboxes[:, :4])
+    else:
+        bboxes_center = np.where(cond, rbboxes[:, [0, 1, 3, 2]], rbboxes[:, :4])
     bboxes = center_to_minmax_2d(bboxes_center[:, :2], bboxes_center[:, 2:])
     return bboxes
 
@@ -431,7 +439,10 @@ def minmax_to_center_2d(minmax_box):
 
 
 def center_to_minmax_2d_0_5(centers, dims):
-    return np.concatenate([centers - dims / 2, centers + dims / 2], axis=-1)
+    if isinstance(centers, torch.Tensor):
+        return torch.cat([centers - dims / 2, centers + dims / 2], dim=-1)
+    else:
+        return np.concatenate([centers - dims / 2, centers + dims / 2], axis=-1)
 
 
 def center_to_minmax_2d(centers, dims, origin=0.5):
@@ -442,7 +453,10 @@ def center_to_minmax_2d(centers, dims, origin=0.5):
 
 
 def limit_period(val, offset=0.5, period=np.pi):
-    return val - np.floor(val / period + offset) * period
+    if isinstance(val, torch.Tensor):
+        return val - (val / period + offset).floor() * period
+    else:
+        return val - np.floor(val / period + offset) * period
 
 
 def projection_matrix_to_CRT_kitti(proj):
@@ -859,16 +873,17 @@ def rotation_points_single_angle(points, angle, axis=0):
     if axis == 1:
         rot_mat_T = np.array(
             [[rot_cos, 0, -rot_sin], [0, 1, 0], [rot_sin, 0, rot_cos]],
-            dtype=points.dtype)
+            dtype=np.float32)
     elif axis == 2 or axis == -1:
         rot_mat_T = np.array(
             [[rot_cos, -rot_sin, 0], [rot_sin, rot_cos, 0], [0, 0, 1]],
-            dtype=points.dtype)
+            dtype=np.float32)
     elif axis == 0:
         rot_mat_T = np.array(
             [[1, 0, 0], [0, rot_cos, -rot_sin], [0, rot_sin, rot_cos]],
-            dtype=points.dtype)
+            dtype=np.float32)
     else:
         raise ValueError("axis should in range")
-
+    if isinstance(points, torch.Tensor):
+        rot_mat_T = torch.from_numpy(rot_mat_T).float().to(device=points.device)
     return points @ rot_mat_T

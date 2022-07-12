@@ -248,7 +248,16 @@ _C.model.drcnn.ssim_intercept = 0.0
 _C.model.drcnn.ssim_std = 0.0
 _C.model.drcnn.mask_mode = 'poly'
 _C.model.drcnn.idispnet_on = False
+_C.model.drcnn.fix_idispnet = True
 _C.model.drcnn.detector_3d_on = False
+_C.model.drcnn.detector_3d = CN()
+_C.model.drcnn.detector_3d.feature_map_size = [1, 248, 216]
+_C.model.drcnn.detector_3d.max_number_of_voxels = 12000
+_C.model.drcnn.detector_3d.anchor_area_threshold = 1.0
+_C.model.drcnn.detector_3d.aug = CN()
+_C.model.drcnn.detector_3d.aug.on = False
+_C.model.drcnn.detector_3d.aug.global_rotation_noise = [-0.7853981852531433, 0.7853981852531433]
+_C.model.drcnn.detector_3d.aug.global_scaling_noise = [0.949999988079071, 1.0499999523162842]
 _C.model.drcnn.retvalid = True
 _C.model.drcnn.nvis = 10
 

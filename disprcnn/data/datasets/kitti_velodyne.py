@@ -284,12 +284,9 @@ def filter_gt_box_outside_range(gt_boxes, limit_range):
         gt_boxes ([type]): [description]
         limit_range ([type]): [description]
     """
-    gt_boxes_bv = center_to_corner_box2d(
-        gt_boxes[:, [0, 1]], gt_boxes[:, [3, 3 + 1]], gt_boxes[:, 6])
-    bounding_box = minmax_to_corner_2d(
-        np.asarray(limit_range)[np.newaxis, ...])
-    ret = points_in_convex_polygon_jit(
-        gt_boxes_bv.reshape(-1, 2), bounding_box)
+    gt_boxes_bv = center_to_corner_box2d(gt_boxes[:, [0, 1]], gt_boxes[:, [3, 3 + 1]], gt_boxes[:, 6])
+    bounding_box = minmax_to_corner_2d(np.asarray(limit_range)[None])
+    ret = points_in_convex_polygon_jit(gt_boxes_bv.reshape(-1, 2), bounding_box)
     return np.any(ret.reshape(-1, 4), axis=1)
 
 
@@ -304,9 +301,16 @@ def global_translate(gt_boxes, points, noise_translate_std):
     noise_translate = np.array([np.random.normal(0, noise_translate_std[0], 1),
                                 np.random.normal(0, noise_translate_std[1], 1),
                                 np.random.normal(0, noise_translate_std[0], 1)]).T
-
-    points[:, :3] += noise_translate
-    gt_boxes[:, :3] += noise_translate
+    if isinstance(points, torch.Tensor):
+        nt = torch.from_numpy(noise_translate).float().to(points.device)
+        points[:, :3] += nt
+    else:
+        points[:, :3] += noise_translate
+    if isinstance(points, torch.Tensor):
+        nt = torch.from_numpy(noise_translate).float().to(points.device)
+        gt_boxes[:, :3] += nt
+    else:
+        gt_boxes[:, :3] += noise_translate
 
     return gt_boxes, points
 
@@ -315,10 +319,8 @@ def global_rotation(gt_boxes, points, rotation=np.pi / 4):
     if not isinstance(rotation, list):
         rotation = [-rotation, rotation]
     noise_rotation = np.random.uniform(rotation[0], rotation[1])
-    points[:, :3] = rotation_points_single_angle(
-        points[:, :3], noise_rotation, axis=2)
-    gt_boxes[:, :3] = rotation_points_single_angle(
-        gt_boxes[:, :3], noise_rotation, axis=2)
+    points[:, :3] = rotation_points_single_angle(points[:, :3], noise_rotation, axis=2)
+    gt_boxes[:, :3] = rotation_points_single_angle(gt_boxes[:, :3], noise_rotation, axis=2)
     gt_boxes[:, 6] += noise_rotation
     return gt_boxes, points
 

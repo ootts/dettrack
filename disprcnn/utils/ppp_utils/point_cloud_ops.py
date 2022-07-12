@@ -25,7 +25,7 @@ def _points_to_voxel_reverse_kernel(points,
     # np.round(grid_size)
     # grid_size = np.round(grid_size).astype(np.int64)(np.int32)
     grid_size = np.round(grid_size, 0, grid_size).astype(np.int32)
-    coor = np.zeros(shape=(3, ), dtype=np.int32)
+    coor = np.zeros(shape=(3,), dtype=np.int32)
     voxel_num = 0
     failed = False
     for i in range(N):
@@ -52,6 +52,7 @@ def _points_to_voxel_reverse_kernel(points,
             num_points_per_voxel[voxelidx] += 1
     return voxel_num
 
+
 @numba.jit(nopython=True)
 def _points_to_voxel_kernel(points,
                             voxel_size,
@@ -76,7 +77,7 @@ def _points_to_voxel_kernel(points,
 
     lower_bound = coors_range[:3]
     upper_bound = coors_range[3:]
-    coor = np.zeros(shape=(3, ), dtype=np.int32)
+    coor = np.zeros(shape=(3,), dtype=np.int32)
     voxel_num = 0
     failed = False
     for i in range(N):
@@ -105,11 +106,11 @@ def _points_to_voxel_kernel(points,
 
 
 def points_to_voxel(points,
-                     voxel_size,
-                     coors_range,
-                     max_points=35,
-                     reverse_index=True,
-                     max_voxels=20000):
+                    voxel_size,
+                    coors_range,
+                    max_points=35,
+                    reverse_index=True,
+                    max_voxels=20000):
     """convert kitti points(N, >=3) to voxels. This version calculate
     everything in one loop. now it takes only 4.2ms(complete point cloud) 
     with jit and 3.2ghz cpu.(don't calculate other features)
@@ -144,10 +145,9 @@ def points_to_voxel(points,
     if reverse_index:
         voxelmap_shape = voxelmap_shape[::-1]
     # don't create large array in jit(nopython=True) code.
-    num_points_per_voxel = np.zeros(shape=(max_voxels, ), dtype=np.int32)
+    num_points_per_voxel = np.zeros(shape=(max_voxels,), dtype=np.int32)
     coor_to_voxelidx = -np.ones(shape=voxelmap_shape, dtype=np.int32)
-    voxels = np.zeros(
-        shape=(max_voxels, max_points, points.shape[-1]), dtype=points.dtype)
+    voxels = np.zeros(shape=(max_voxels, max_points, points.shape[-1]), dtype=np.float32)
     coors = np.zeros(shape=(max_voxels, 3), dtype=np.int32)
     if reverse_index:
         voxel_num = _points_to_voxel_reverse_kernel(
@@ -173,7 +173,7 @@ def bound_points_jit(points, upper_bound, lower_bound):
     # convert result to np.bool after this function.
     N = points.shape[0]
     ndim = points.shape[1]
-    keep_indices = np.zeros((N, ), dtype=np.int32)
+    keep_indices = np.zeros((N,), dtype=np.int32)
     success = 0
     for i in range(N):
         success = 1

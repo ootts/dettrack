@@ -42,7 +42,7 @@ class DisparityMapProcessor:
         if len(disparity_maps_per_img) != 0:
             disparity_maps_per_img = torch.stack(disparity_maps_per_img).sum(dim=0)
         else:
-            disparity_maps_per_img = torch.zeros((left_prediction.height, left_prediction.width))
+            disparity_maps_per_img = torch.zeros((left_prediction.height, left_prediction.width)).cuda()
         return DisparityMap(disparity_maps_per_img)
 
     def __call__(self, left_predictions, right_predictions):

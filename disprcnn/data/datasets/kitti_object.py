@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import os.path as osp
 import pickle
@@ -46,40 +48,36 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         self.infos = self.read_info()
         self._imgsetpath = os.path.join(self.root, "object/split_set/%s_set.txt")
         if offline_2d_predictions_path != '':
-            o2ppath = offline_2d_predictions_path % split + '.pth'
+            o2ppath = offline_2d_predictions_path % split
             if is_testing_split(self.split):
                 s = o2ppath.split('/')[-2]
                 s = '_'.join(s.split('_')[:2])
                 o2ppath = '/'.join(o2ppath.split('/')[:-2] + [s] + [o2ppath.split('/')[-1]])
-            self.o2dpreds = torch.load(o2ppath, 'cpu')
-
+            o2p_dir = o2ppath.rstrip(".pth")
+            if not osp.exists(o2p_dir):
+                o2dpreds = torch.load(o2ppath, 'cpu')
+                os.makedirs(o2p_dir, exist_ok=True)
+                for pred in o2dpreds:
+                    imgid = pred['left'].extra_fields['imgid']
+                    with  open(osp.join(o2p_dir, f"{imgid:06d}.pkl"), "wb") as f:
+                        pickle.dump(pred, f)
+            self.o2p_dir = o2p_dir
+        else:
+            self.o2p_dir = ""
         with open(self._imgsetpath % self.split) as f:
             self.ids = f.readlines()
         self.ids = [x.strip("\n") for x in self.ids]
-        if hasattr(self, 'o2dpreds'):
-            assert len(self.ids) == len(self.o2dpreds['left'])
+        # if hasattr(self, 'o2dpreds'):
+        #     assert len(self.ids) == len(self.o2dpreds)
         if filter_empty:
             ids = []
-            if hasattr(self, 'o2dpreds'):
-                o2dpreds = {'left': [], 'right': []}
             for i, id in enumerate(self.ids):
                 if self.annotations['left'][int(id)]['labels'].sum() != 0:
-                    if hasattr(self, 'o2dpreds'):
-                        if len(self.o2dpreds['left'][i]) != 0:
-                            ids.append(id)
-                            o2dpreds['left'].append(self.o2dpreds['left'][i])
-                            o2dpreds['right'].append(self.o2dpreds['right'][i])
-                    else:
-                        ids.append(id)
+                    ids.append(id)
             self.ids = ids
-            if hasattr(self, 'o2dpreds'):
-                self.o2dpreds = o2dpreds
         self.truncations_list, self.occlusions_list = self.get_truncations_occluded_list()
 
-        if '%s' in offline_2d_predictions_path:
-            self.offline_2d_predictions_dir = offline_2d_predictions_path % split
-        else:
-            self.offline_2d_predictions_dir = offline_2d_predictions_path
+        # self.offline_2d_predictions_dir = offline_2d_predictions_path
         if ds_len > 0:
             self.ids = self.ids[:ds_len]
         print('using dataset of length', self.__len__())
@@ -105,7 +103,7 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             targets['left'] = l
             targets['right'] = r
         dps['targets'] = targets
-        if self.offline_2d_predictions_dir != '':
+        if self.o2p_dir != '':
             lp, rp = self.get_offline_prediction(index)
             lp = lp.resize(targets['left'].size)
             rp = rp.resize(targets['right'].size)
@@ -201,7 +199,8 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             annodir = os.path.join(self.root, f"object/training/label_{view}")
             anno_cache_path = os.path.join(annodir, 'annotations.pkl')
             if os.path.exists(anno_cache_path):
-                annotations = pickle.load(open(anno_cache_path, 'rb'))
+                with open(anno_cache_path, 'rb') as f:
+                    annotations = pickle.load(f)
             else:
                 print('generating', anno_cache_path)
                 annotations = []
@@ -279,7 +278,8 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         annodir = os.path.join(self.root, f"object/training/label_2")
         truncations_occluded_cache_path = os.path.join(annodir, 'truncations_occluded.pkl')
         if os.path.exists(truncations_occluded_cache_path):
-            truncations_list, occluded_list = pickle.load(open(truncations_occluded_cache_path, 'rb'))
+            with open(truncations_occluded_cache_path, 'rb') as f:
+                truncations_list, occluded_list = pickle.load(f)
         else:
             truncations_list, occluded_list = [], []
             print('generating', truncations_occluded_cache_path)
@@ -298,7 +298,10 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         return truncations_list, occluded_list
 
     def get_offline_prediction(self, index):
-        lpmem, rpmem = self.o2dpreds['left'][index], self.o2dpreds['right'][index]
+        imgid = self.ids[index]
+        with open(osp.join(self.o2p_dir, f"{imgid}.pkl"), "rb") as f:
+            pred = pickle.load(f)
+        lpmem, rpmem = pred['left'], pred['right']
         return lpmem, rpmem
 
     def get_kins_mask(self, index, ):

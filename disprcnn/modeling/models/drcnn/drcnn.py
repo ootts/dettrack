@@ -1,6 +1,17 @@
 import numpy as np
 import pytorch_ssim
 import torch
+
+from disprcnn.data.datasets.kitti_velodyne import random_flip, global_rotation, global_scaling_v2, global_translate
+from disprcnn.modeling.models.pointpillars.pointpillars import PointPillars
+from disprcnn.structures.bounding_box_3d import Box3DList
+from disprcnn.utils.pn_utils import to_array
+from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
+from disprcnn.utils.ppp_utils.box_np_ops import rbbox2d_to_near_bbox, limit_period, sparse_sum_for_anchors_mask, \
+    fused_get_anchors_area
+from disprcnn.utils.ppp_utils.box_torch_ops import lidar_to_camera, box_camera_to_lidar, box_lidar_to_camera
+from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
+from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
 from disprcnn.utils.timer import EvalTime
 
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
@@ -20,6 +31,7 @@ from disprcnn.modeling.models.yolact.yolact import Yolact
 from torch import nn
 
 from disprcnn.utils.stereo_utils import expand_box_to_integer
+from disprcnn.utils.utils_3d import matrix_3x4_to_4x4
 from disprcnn.utils.vis3d_ext import Vis3D
 from disprcnn.utils.averagemeter import AverageMeter
 
@@ -42,13 +54,30 @@ class DRCNN(nn.Module):
             self.idispnet = PSMNet(cfg)
             self.roi_align = ROIAlign((self.idispnet.input_size, self.idispnet.input_size), 1.0, 0)
         if self.cfg.detector_3d_on:
-            raise NotImplementedError()
-            print()
-        self.time_meter = AverageMeter(ignore_first=20)
-        self.decode_time_meter = AverageMeter(ignore_first=20)
-        self.match_time_meter = AverageMeter(ignore_first=20)
-        self.idispnet_prep_time_meter = AverageMeter(ignore_first=20)
-        self.idispnet_time_meter = AverageMeter(ignore_first=20)
+            self.pointpillars = PointPillars(cfg)
+            self.voxel_generator = build_voxel_generator(self.total_cfg.voxel_generator)
+            box_coder = GroundBox3dCoderTorch()
+            self.target_assigner = build_target_assigner(self.total_cfg.model.pointpillars.target_assigner, box_coder)
+            feature_map_size = self.cfg.detector_3d.feature_map_size
+            ret = self.target_assigner.generate_anchors(feature_map_size)  # [352, 400]
+            anchors = torch.from_numpy(ret["anchors"]).cuda()
+            anchors = anchors.reshape([-1, 7])
+            matched_thresholds = torch.from_numpy(ret["matched_thresholds"]).cuda()
+            unmatched_thresholds = torch.from_numpy(ret["unmatched_thresholds"]).cuda()
+            anchors_bv = rbbox2d_to_near_bbox(anchors[:, [0, 1, 3, 4, 6]])
+            self.anchor_cache = {
+                "anchors": anchors,
+                "anchors_bv": anchors_bv,
+                "matched_thresholds": matched_thresholds,
+                "unmatched_thresholds": unmatched_thresholds,
+            }
+        self.time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
+        self.decode_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
+        self.match_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
+        self.idispnet_prep_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
+        self.idispnet_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
+        self.pp_prep_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
+        self.pp_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
 
     def forward(self, dps):
         vis3d = Vis3D(
@@ -59,52 +88,69 @@ class DRCNN(nn.Module):
             enable=self.dbg,
         )
         vis3d.set_scene_id(dps['global_step'])
+        loss_dict, outputs = {}, {}
         ##############  ↓ Step 1: 2D  ↓  ##############
-        assert self.yolact.training is False
-        self.evaltime('begin')
-        with torch.no_grad():
-            preds_left = self.yolact({'image': dps['images']['left']})
-            preds_right = self.yolact({'image': dps['images']['right']})
+        if 'predictions' in dps:
+            left_result = dps['predictions']['left'][0]
+            right_result = dps['predictions']['right'][0]
+        else:
+            assert self.yolact.training is False
+            self.evaltime('begin')
+            with torch.no_grad():
+                preds_left = self.yolact({'image': dps['images']['left']})
+                preds_right = self.yolact({'image': dps['images']['right']})
 
-        h, w, _ = dps['original_images']['left'][0].shape
-        self.time_meter.update(self.evaltime('yolact forward'))
-        print('forward', self.time_meter.avg)
-        left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
-        right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
-        self.decode_time_meter.update(self.evaltime('decode'))
-        print('decode', self.decode_time_meter.avg)
-        left_result, right_result = self.match_lp_rp(left_result, right_result,
-                                                     dps['original_images']['left'][0],
-                                                     dps['original_images']['right'][0])
-        self.match_time_meter.update(self.evaltime('match'))
-        print('match', self.match_time_meter.avg)
-        left_result.add_field('imgid', dps['imgid'][0].item())
-        right_result.add_field('imgid', dps['imgid'][0].item())
-        if self.dbg:
-            left_result.plot(dps['original_images']['left'][0], show=True)
-            right_result.plot(dps['original_images']['right'][0], show=True)
-        ##############  ↓ Step 2: idispnet  ↓  ##############
-        if self.cfg.idispnet_on:
-            self.evaltime('idispnet begin')
-            left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
-                                                                                                        left_result,
-                                                                                                        right_result)
-            self.idispnet_prep_time_meter.update(self.evaltime('idispnet prep'))
-            print('idispnet prep', self.idispnet_prep_time_meter.avg)
-            if len(left_roi_images) > 0:
-                disp_output = self.idispnet({'left': left_roi_images, 'right': right_roi_images})
-            else:
-                disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
-            left_result.add_field('disparity', disp_output)
-            self.idispnet_time_meter.update(self.evaltime('idispnet end'))
-            print('idispnet', self.idispnet_time_meter.avg)
-            self.vis_roi_disp(dps, left_result, right_result, vis3d)
+            h, w, _ = dps['original_images']['left'][0].shape
+            self.time_meter.update(self.evaltime('yolact forward'))
+            if self.total_cfg.evaltime: print('forward', self.time_meter.avg)
+            left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
+            right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
+            self.decode_time_meter.update(self.evaltime('decode'))
+            if self.total_cfg.evaltime: print('decode', self.decode_time_meter.avg)
+            left_result, right_result = self.match_lp_rp(left_result, right_result,
+                                                         dps['original_images']['left'][0],
+                                                         dps['original_images']['right'][0])
+            self.match_time_meter.update(self.evaltime('match'))
+            if self.total_cfg.evaltime: print('match', self.match_time_meter.avg)
+            left_result.add_field('imgid', dps['imgid'][0].item())
+            right_result.add_field('imgid', dps['imgid'][0].item())
+            if self.dbg:
+                left_result.plot(dps['original_images']['left'][0], show=True)
+                right_result.plot(dps['original_images']['right'][0], show=True)
+            ##############  ↓ Step 2: idispnet  ↓  ##############
+            if self.cfg.idispnet_on:
+                assert self.idispnet.training is False
+                with torch.no_grad():
+                    self.evaltime('idispnet begin')
+                    left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
+                                                                                                                left_result,
+                                                                                                                right_result)
+                    self.idispnet_prep_time_meter.update(self.evaltime('idispnet prep'))
+                    if self.total_cfg.evaltime: print('idispnet prep', self.idispnet_prep_time_meter.avg)
+                    if len(left_roi_images) > 0:
+                        disp_output = self.idispnet({'left': left_roi_images, 'right': right_roi_images})
+                    else:
+                        disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
+                    left_result.add_field('disparity', disp_output)
+                    self.idispnet_time_meter.update(self.evaltime('idispnet end'))
+                    if self.total_cfg.evaltime: print('idispnet', self.idispnet_time_meter.avg)
+                    self.vis_roi_disp(dps, left_result, right_result, vis3d)
         ##############  ↓ Step 3: 3D detector  ↓  ##############
-        # todo
+        if self.cfg.detector_3d_on:
+            self.evaltime('pp begin')
+            pp_input = self.prepare_pointpillars_input(dps, left_result, right_result)
+            self.pp_prep_time_meter.update(self.evaltime('pp prep'))
+            if self.total_cfg.evaltime: print('pp prep', self.pp_prep_time_meter.avg)
+            pp_output, pp_loss_dict = self.pointpillars(pp_input)
+            self.pp_time_meter.update(self.evaltime('pp forward'))
+            if self.total_cfg.evaltime: print('pp forward', self.pp_time_meter.avg)
+            loss_dict.update(pp_loss_dict)
+            if self.pointpillars.training:
+                metrics = pp_output['ret']
+                outputs['metrics'] = {k.replace("@", "_"): torch.tensor([v]).float().cuda() for k, v in metrics.items()}
+        # print()
         ##############  ↓ Step 4: return  ↓  ##############
-        outputs = {'left': left_result, 'right': right_result}
-
-        loss_dict = {}
+        outputs.update({'left': left_result, 'right': right_result})
         return outputs, loss_dict
 
     def decode_yolact_preds(self, preds, h, w, add_mask=True, retvalid=False):
@@ -244,3 +290,120 @@ class DRCNN(nn.Module):
             vis3d.add_image(dps['original_images']['left'][0].cpu().numpy())
             vis3d.add_box3dlist(target.get_field('box3d'))
             print()
+
+    def prepare_pointpillars_input(self, dps, left_result, right_result):
+        vis3d = Vis3D(
+            xyz_pattern=('x', '-y', '-z'),
+            out_folder="dbg",
+            sequence="prepare_pointpillars_input",
+            # auto_increase=,
+            enable=self.dbg,
+        )
+        evaltime = EvalTime(disable=True)
+        evaltime('')
+        dmp = DisparityMapProcessor()
+        voxel_generator = self.voxel_generator
+
+        disparity_map = dmp(left_result, right_result)
+        evaltime('disp pp')
+        target = dps['targets']['left'][0]
+        calib = target.get_field('calib').calib
+        pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
+        vis3d.add_point_cloud(pts_rect, name='pts_rect')
+        keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
+               (pts_rect[:, 1] > -3) & (pts_rect[:, 1] < 3) \
+               & (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
+        vis3d.add_point_cloud(pts_rect[keep], name='pts_rect_keep')
+        points = calib.rect_to_lidar(pts_rect)
+        rect = torch.eye(4).cuda().float()
+        rect[:3, :3] = torch.from_numpy(calib.R0).cuda()
+        Trv2c = torch.eye(4).cuda().float()
+        Trv2c[:3, :4] = torch.from_numpy(calib.V2C).cuda()
+        gt_boxes = box_camera_to_lidar(target.get_field('box3d').convert('xyzhwl_ry').bbox_3d[:, [0, 1, 2, 5, 3, 4, 6]],
+                                       rect, Trv2c)
+        evaltime('pp1')
+        # augmentation
+        aug_cfg = self.cfg.detector_3d.aug
+        if aug_cfg.on is True:
+            gt_boxes, points = random_flip(gt_boxes, pts_lidar)
+            gt_boxes, points = global_rotation(gt_boxes, points, rotation=aug_cfg.global_rotation_noise)
+            gt_boxes, points = global_scaling_v2(gt_boxes, points, *aug_cfg.global_scaling_noise)
+
+            # Global translation
+            global_loc_noise_std = (0.2, 0.2, 0.2)
+            gt_boxes, points = global_translate(gt_boxes, points, global_loc_noise_std)
+
+            bv_range = voxel_generator.point_cloud_range[[0, 1, 3, 4]]
+            mask = filter_gt_box_outside_range(gt_boxes, bv_range)
+            gt_boxes = gt_boxes[mask]
+            gt_classes = gt_classes[mask]
+
+        # limit rad to [-pi, pi]
+        gt_boxes[:, 6] = limit_period(gt_boxes[:, 6], offset=0.5, period=2 * np.pi)
+        evaltime('pp1.1')
+        vis3d.add_point_cloud(lidar_to_camera(points[:, :3], rect, Trv2c))
+        box3d = box_lidar_to_camera(gt_boxes, rect, Trv2c)
+        box3d = Box3DList(box3d[:, [0, 1, 2, 4, 5, 3, 6]].float(), "xyzhwl_ry")
+        vis3d.add_box3dlist(box3d)
+        evaltime('pp1.2')
+        perm = np.random.permutation(points.shape[0])
+        points = points[perm]
+        # perm = torch.randperm(points.shape[0])
+        # points = points[perm]
+        evaltime('pp1.3')
+        voxel_size = voxel_generator.voxel_size
+        pc_range = voxel_generator.point_cloud_range
+        grid_size = voxel_generator.grid_size
+        evaltime('pp1.4')
+        # [352, 400]
+        evaltime('pp2')
+        p = to_array(points)
+        # evaltime('pp2.0.5')
+        voxels, coordinates, num_points = voxel_generator.generate(p, self.cfg.detector_3d.max_number_of_voxels)
+        # evaltime('pp2.1')
+
+        coordinates = torch.from_numpy(coordinates).long().cuda()
+        # evaltime('pp2.2')
+        coordinates = torch.cat([coordinates, torch.full_like(coordinates[:, 0:1], 0)], dim=1)
+        example = {
+            'voxels': torch.from_numpy(voxels).cuda(),
+            'num_points': torch.from_numpy(num_points).long().cuda(),
+            'coordinates': coordinates,
+            # "num_voxels": torch.tensor([voxels.shape[0]], dtype=torch.long).cuda(),
+            'rect': rect[None],
+            'Trv2c': Trv2c[None],
+            'P2': torch.from_numpy(matrix_3x4_to_4x4(calib.P2)).float().cuda()[None],
+        }
+        evaltime('pp3')
+        anchor_cache = self.anchor_cache
+        anchors = anchor_cache["anchors"]
+        anchors_bv = anchor_cache["anchors_bv"]
+        matched_thresholds = anchor_cache["matched_thresholds"]
+        unmatched_thresholds = anchor_cache["unmatched_thresholds"]
+        example["anchors"] = anchors[None]
+        anchors_mask = None
+        anchor_area_threshold = self.cfg.detector_3d.anchor_area_threshold
+        if anchor_area_threshold >= 0:
+            coors = coordinates
+            dense_voxel_map = sparse_sum_for_anchors_mask(to_array(coors, int), tuple(grid_size[::-1][1:]))
+            dense_voxel_map = dense_voxel_map.cumsum(0)
+            dense_voxel_map = dense_voxel_map.cumsum(1)
+            anchors_area = fused_get_anchors_area(dense_voxel_map, to_array(anchors_bv),
+                                                  voxel_size, pc_range, grid_size)
+            anchors_mask = torch.from_numpy(anchors_area > anchor_area_threshold).cuda()
+            example['anchors_mask'] = anchors_mask[None]
+        evaltime('pp4')
+        if self.pointpillars.training:
+            gt_classes = torch.ones([gt_boxes.shape[0]]).cuda().long()
+            targets_dict = self.target_assigner.assign(
+                to_array(anchors), to_array(gt_boxes), to_array(anchors_mask, bool),
+                gt_classes=to_array(gt_classes, int),
+                matched_thresholds=to_array(matched_thresholds),
+                unmatched_thresholds=to_array(unmatched_thresholds))
+            example.update({
+                'labels': torch.from_numpy(targets_dict['labels']).long().cuda()[None],
+                'reg_targets': torch.from_numpy(targets_dict['bbox_targets']).float().cuda()[None],
+                'reg_weights': torch.from_numpy(targets_dict['bbox_outside_weights']).float().cuda()[None],
+            })
+        evaltime('pp5')
+        return example

@@ -2,5 +2,5 @@ model:
   pointpillars:
     preprocess:
       save_dir: "data/disprcnn/kitti_second"
-      velodyne_template: 'data/kitti/object/%s/velodyne/%06d.bin'
+      velodyne_template: 'data/disprcnn/pseudo_lidar/%s/velodyne/%06d.bin'
       velodyne_reduced_dir: "data/disprcnn/kitti_second/training/velodyne_reduced/"

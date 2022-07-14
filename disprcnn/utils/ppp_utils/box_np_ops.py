@@ -782,14 +782,10 @@ def fused_get_anchors_area(dense_map, anchors_bv, stride, offset,
     N = anchors_bv.shape[0]
     ret = np.zeros((N), dtype=dense_map.dtype)
     for i in range(N):
-        anchor_coor[0] = np.floor(
-            (anchors_bv[i, 0] - offset[0]) / stride[0])
-        anchor_coor[1] = np.floor(
-            (anchors_bv[i, 1] - offset[1]) / stride[1])
-        anchor_coor[2] = np.floor(
-            (anchors_bv[i, 2] - offset[0]) / stride[0])
-        anchor_coor[3] = np.floor(
-            (anchors_bv[i, 3] - offset[1]) / stride[1])
+        anchor_coor[0] = np.floor((anchors_bv[i, 0] - offset[0]) / stride[0])
+        anchor_coor[1] = np.floor((anchors_bv[i, 1] - offset[1]) / stride[1])
+        anchor_coor[2] = np.floor((anchors_bv[i, 2] - offset[0]) / stride[0])
+        anchor_coor[3] = np.floor((anchors_bv[i, 3] - offset[1]) / stride[1])
         anchor_coor[0] = max(anchor_coor[0], 0)
         anchor_coor[1] = max(anchor_coor[1], 0)
         anchor_coor[2] = min(anchor_coor[2], grid_size_x)

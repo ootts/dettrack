@@ -363,7 +363,8 @@ class DRCNN(nn.Module):
             # auto_increase=,
             enable=self.dbg,
         )
-        evaltime = EvalTime(disable=not self.total_cfg.evaltime, do_print=False)
+        # evaltime = EvalTime(disable=not self.total_cfg.evaltime, do_print=False)
+        evaltime = EvalTime()
         evaltime('')
         dmp = DisparityMapProcessor()
         voxel_generator = self.voxel_generator
@@ -434,7 +435,7 @@ class DRCNN(nn.Module):
         coordinates = torch.from_numpy(coordinates).long().cuda()
         voxels = torch.from_numpy(voxels).cuda()
         num_points = torch.from_numpy(num_points).long().cuda()
-        evaltime('to tensorn')
+        evaltime('to tensor')
         if self.dbg:
             vis3d.add_point_cloud(coordinates * torch.tensor(voxel_size.tolist()[::-1]).float().cuda()[None],
                                   name='coordinates')

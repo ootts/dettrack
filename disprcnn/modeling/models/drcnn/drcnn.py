@@ -48,7 +48,7 @@ class DRCNN(nn.Module):
         self.total_cfg = cfg
         self.cfg = cfg.model.drcnn
         self.dbg = cfg.dbg is True
-        self.evaltime = EvalTime(disable=not cfg.evaltime, do_print=True)
+        self.evaltime = EvalTime(disable=not cfg.evaltime, do_print=False)
         # self.detector2d_timer = Timer(ignore_first_n=20)
         # self.idispnet_timer = Timer(ignore_first_n=20)
         if self.cfg.yolact_on:
@@ -106,24 +106,26 @@ class DRCNN(nn.Module):
         else:
             assert self.yolact.training is False
             self.evaltime('begin')
+            # start = torch.cuda.Event(enable_timing=True)
+            # end = torch.cuda.Event(enable_timing=True)
+            # start.record()
             with torch.no_grad():
                 preds_left = self.yolact({'image': dps['images']['left']})
                 preds_right = self.yolact({'image': dps['images']['right']})
-
+            # end.record()
             h, w, _ = dps['original_images']['left'][0].shape
             yolact_forward_time = self.evaltime('yolact forward')
             self.time_meter.update(yolact_forward_time)
+            # self.time_meter.update(start.elapsed_time(end))
             if self.total_cfg.evaltime:
-                print('forward', self.time_meter.avg)
-                self.tb_timer.add_scalar("forward/yolact", yolact_forward_time, global_step)
                 self.tb_timer.add_scalar("forward/yolact_avg", self.time_meter.avg, global_step)
             left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
             right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
             decode_time = self.evaltime('decode')
             self.decode_time_meter.update(decode_time)
             if self.total_cfg.evaltime:
-                print('decode', self.decode_time_meter.avg)
-                self.tb_timer.add_scalar("forward/decode", decode_time, global_step)
+                # print('decode', self.decode_time_meter.avg)
+                # self.tb_timer.add_scalar("forward/decode", decode_time, global_step)
                 self.tb_timer.add_scalar("forward/decode_avg", self.decode_time_meter.avg, global_step)
             left_result, right_result = self.match_lp_rp(left_result, right_result,
                                                          dps['original_images']['left'][0],
@@ -131,8 +133,8 @@ class DRCNN(nn.Module):
             match_time = self.evaltime('match')
             self.match_time_meter.update(match_time)
             if self.total_cfg.evaltime:
-                print('match', self.match_time_meter.avg)
-                self.tb_timer.add_scalar("forward/match", match_time, global_step)
+                # print('match', self.match_time_meter.avg)
+                # self.tb_timer.add_scalar("forward/match", match_time, global_step)
                 self.tb_timer.add_scalar("forward/match_avg", self.match_time_meter.avg, global_step)
             left_result.add_field('imgid', dps['imgid'][0].item())
             right_result.add_field('imgid', dps['imgid'][0].item())
@@ -150,8 +152,8 @@ class DRCNN(nn.Module):
                     idispnet_prep_time = self.evaltime('idispnet prep')
                     self.idispnet_prep_time_meter.update(idispnet_prep_time)
                     if self.total_cfg.evaltime:
-                        print('idispnet prep', self.idispnet_prep_time_meter.avg)
-                        self.tb_timer.add_scalar("forward/idispnet_prep", idispnet_prep_time, global_step)
+                        # print('idispnet prep', self.idispnet_prep_time_meter.avg)
+                        # self.tb_timer.add_scalar("forward/idispnet_prep", idispnet_prep_time, global_step)
                         self.tb_timer.add_scalar("forward/idispnet_prep_avg", self.idispnet_prep_time_meter.avg,
                                                  global_step)
                     if len(left_roi_images) > 0:
@@ -162,8 +164,8 @@ class DRCNN(nn.Module):
                     idispnet_forward_time = self.evaltime('idispnet end')
                     self.idispnet_time_meter.update(idispnet_forward_time)
                     if self.total_cfg.evaltime:
-                        print('idispnet', self.idispnet_time_meter.avg)
-                        self.tb_timer.add_scalar("forward/idispnet", idispnet_forward_time, global_step)
+                        # print('idispnet', self.idispnet_time_meter.avg)
+                        # self.tb_timer.add_scalar("forward/idispnet", idispnet_forward_time, global_step)
                         self.tb_timer.add_scalar("forward/idispnet_avg", self.idispnet_time_meter.avg, global_step)
                     self.vis_roi_disp(dps, left_result, right_result, vis3d)
         ##############  ↓ Step 3: 3D detector  ↓  ##############
@@ -173,8 +175,8 @@ class DRCNN(nn.Module):
             pp_prep_time = self.evaltime('pp prep')
             self.pp_prep_time_meter.update(pp_prep_time)
             if self.total_cfg.evaltime:
-                print('pp prep', self.pp_prep_time_meter.avg)
-                self.tb_timer.add_scalar("forward/pp_prep", pp_prep_time, global_step)
+                # print('pp prep', self.pp_prep_time_meter.avg)
+                # self.tb_timer.add_scalar("forward/pp_prep", pp_prep_time, global_step)
                 self.tb_timer.add_scalar("forward/pp_prep_avg", self.pp_prep_time_meter.avg, global_step)
             pp_output, pp_loss_dict = self.pointpillars(pp_input)
             loss_dict.update(pp_loss_dict)
@@ -205,8 +207,8 @@ class DRCNN(nn.Module):
             pp_forward_time = self.evaltime('pp forward')
             self.pp_time_meter.update(pp_forward_time)
             if self.total_cfg.evaltime:
-                print('pp forward', self.pp_time_meter.avg)
-                self.tb_timer.add_scalar("forward/pp", pp_forward_time, global_step)
+                # print('pp forward', self.pp_time_meter.avg)
+                # self.tb_timer.add_scalar("forward/pp", pp_forward_time, global_step)
                 self.tb_timer.add_scalar("forward/pp_avg", self.pp_time_meter.avg, global_step)
         # print()
         ##############  ↓ Step 4: return  ↓  ##############
@@ -361,7 +363,7 @@ class DRCNN(nn.Module):
             # auto_increase=,
             enable=self.dbg,
         )
-        evaltime = EvalTime(disable=not self.total_cfg.evaltime)
+        evaltime = EvalTime(disable=not self.total_cfg.evaltime, do_print=False)
         evaltime('')
         dmp = DisparityMapProcessor()
         voxel_generator = self.voxel_generator

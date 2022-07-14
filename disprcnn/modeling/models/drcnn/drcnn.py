@@ -85,7 +85,8 @@ class DRCNN(nn.Module):
         self.pp_prep_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
         self.pp_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
         if self.total_cfg.evaltime:
-            self.tb_timer = SummaryWriter(osp.join(self.total_cfg.output_dir, "evaltime"), flush_secs=20)
+            self.tb_timer = SummaryWriter(osp.join(self.total_cfg.output_dir, "evaltime", self.total_cfg.datasets.test),
+                                          flush_secs=20)
 
     def forward(self, dps):
         vis3d = Vis3D(

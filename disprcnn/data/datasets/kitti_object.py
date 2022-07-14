@@ -175,6 +175,8 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             # left_target.add_field('kins_masks', self.get_kins_mask(index))
             left_target.add_map('disparity', self.get_disparity(index))
             left_target.add_field('imgid', torch.full((len(left_target), 1), int(img_id), dtype=torch.long))
+            boxes_3d = Box3DList(torch.ones([1, 7], dtype=torch.float), mode='ry_lhwxyz')
+            left_target.add_field("box3d", boxes_3d)
             # right target
             right_target = BoxList(fakebox, (width, height), mode="xyxy")
             target = {'left': left_target, 'right': right_target}
@@ -441,7 +443,6 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
 
 
 def is_testing_split(split):
-    # return split in ['test', 'testmini', 'test1', 'test2', 'val']
     return split in ['test', 'testmini', 'test1', 'test2']
 
 

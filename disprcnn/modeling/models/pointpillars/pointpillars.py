@@ -109,6 +109,10 @@ class PointPillars(nn.Module):
         self.rpn_total_loss = metrics.Scalar()
         self.dbg = self.total_cfg.dbg
 
+        if self.cfg.pretrained_model != "":
+            ckpt = torch.load(self.cfg.pretrained_model, 'cpu')
+            self.load_state_dict(ckpt['model'])
+
     def forward(self, dps):
         vis3d = Vis3D(
             xyz_pattern=('x', '-y', '-z'),

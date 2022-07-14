@@ -9,6 +9,8 @@ model:
     mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
     idispnet_on: True
     detector_3d_on: True
+    detector_3d:
+      shuffle_points: False
   yolact:
     num_classes: 2
     class_names: [ 'car' ]
@@ -16,7 +18,8 @@ model:
   idispnet:
     pretrained_model: "models/idispnet/kitti_resizegray/bestmodel.pth"
   pointpillars:
-    num_point_features: 3
+    num_point_features: 4
+    pretrained_model: "models/pointpillars/disprcnn/train/model_epoch_000028.pth"
 datasets:
   train: ("kittiobj_train",)
   test: "kittiobj_val"
@@ -61,13 +64,14 @@ input:
 dataset:
   kitti_object:
     use_gray: True
-    offline_2d_predictions_path: 'models/idispnet/kittiobj/kittiobj_resizegray/inference/kittiobj_%s/predictions.pth'
+#    offline_2d_predictions_path: 'models/idispnet/kittiobj/kittiobj_resizegray/inference/kittiobj_%s/predictions.pth'
 test:
   do_visualization: False
   #  visualizer: drcnn # todo: implement
-  evaluators: [ ]
+  evaluators: [ "kittiobj" ]
   batch_size: 1
   save_predictions: True
+#  force_recompute: False
 
 dataloader:
   collator: ExtendedBatchCollator

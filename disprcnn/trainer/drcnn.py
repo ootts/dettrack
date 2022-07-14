@@ -77,6 +77,7 @@ class DRCNNTrainer(BaseTrainer):
                 for i, batch in enumerate(bar):
                     batch = to_cuda(batch)
                     batch['global_step'] = i
+                    # batch['tb_writer'] = self.tb_writer
                     output, loss_dict = self.model(batch)
                     output = to_cpu(output)
                     outputs.append(output)

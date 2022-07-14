@@ -5,6 +5,7 @@ import re
 from collections import OrderedDict
 
 import numpy as np
+import tqdm
 from skimage import io
 
 
@@ -134,7 +135,8 @@ def get_kitti_image_info(path,
                          extend_matrix=True,
                          num_worker=8,
                          relative_path=True,
-                         with_imageshape=True):
+                         with_imageshape=True,
+                         velodyne_template=""):
     # image_infos = []
     root_path = pathlib.Path(path)
     if not isinstance(image_ids, list):
@@ -144,24 +146,23 @@ def get_kitti_image_info(path,
         image_info = {'image_idx': idx, 'pointcloud_num_features': 4}
         annotations = None
         if velodyne:
-            image_info['velodyne_path'] = get_velodyne_path(
-                idx, path, training, relative_path)
-        image_info['img_path'] = get_image_path(idx, path, training,
-                                                relative_path)
+            image_info['velodyne_path'] = get_velodyne_path(idx, path, training, relative_path)
+            if velodyne_template != "":
+                split = 'training' if training else 'testing'
+                image_info['velodyne_path'] = velodyne_template % (split, idx)
+        image_info['img_path'] = get_image_path(idx, path, training, relative_path)
         if with_imageshape:
             img_path = image_info['img_path']
             if relative_path:
                 img_path = str(root_path / img_path)
-            image_info['img_shape'] = np.array(
-                io.imread(img_path).shape[:2], dtype=np.int32)
+            image_info['img_shape'] = np.array(io.imread(img_path).shape[:2], dtype=np.int32)
         if label_info:
             label_path = get_label_path(idx, path, training, relative_path)
             if relative_path:
                 label_path = str(root_path / label_path)
             annotations = get_label_anno(label_path)
         if calib:
-            calib_path = get_calib_path(
-                idx, path, training, relative_path=False)
+            calib_path = get_calib_path(idx, path, training, relative_path=False)
             with open(calib_path, 'r') as f:
                 lines = f.readlines()
             P0 = np.array(
@@ -212,8 +213,7 @@ def get_kitti_image_info(path,
         return image_info
 
     with futures.ThreadPoolExecutor(num_worker) as executor:
-        image_infos = executor.map(map_func, image_ids)
-
+        image_infos = list(tqdm.tqdm(executor.map(map_func, image_ids), total=len(image_ids)))
     return list(image_infos)
 
 

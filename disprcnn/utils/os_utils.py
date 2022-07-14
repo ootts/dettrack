@@ -114,7 +114,7 @@ def make_source_code_snapshot(log_dir):
         # )
         loguru.logger.info("Backuping source....")
         os.makedirs(osp.join(log_dir, 'source'))
-        cmd = f'rsync -rPq --include nds/data --include nds/modeling/models --include *'
+        cmd = f'rsync -rPq --include disprcnn/data --include disprcnn/modeling/models --include *'
         exclusions = ['__pycache__', 'data', "logs", "models", "*.egg-info", ".vscode", "*.so", "*.a",
                       ".ipynb_checkpoints", "build", "bin", "*.ply", "eigen", "pybind11", "*.npy", "*.pth", ".git",
                       "debug", "dbg", "dbg_kitti_tracking", "tmp"]

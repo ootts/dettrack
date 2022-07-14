@@ -1,8 +1,11 @@
+import loguru
 import numpy as np
 import pytorch_ssim
 import torch
 
-from disprcnn.data.datasets.kitti_velodyne import random_flip, global_rotation, global_scaling_v2, global_translate
+from disprcnn.data.datasets.kitti_velodyne import random_flip, global_rotation, global_scaling_v2, \
+    global_translate, \
+    filter_gt_box_outside_range
 from disprcnn.modeling.models.pointpillars.pointpillars import PointPillars
 from disprcnn.structures.bounding_box_3d import Box3DList
 from disprcnn.utils.pn_utils import to_array
@@ -292,6 +295,7 @@ class DRCNN(nn.Module):
             print()
 
     def prepare_pointpillars_input(self, dps, left_result, right_result):
+        # todo: fix this function
         vis3d = Vis3D(
             xyz_pattern=('x', '-y', '-z'),
             out_folder="dbg",
@@ -308,7 +312,11 @@ class DRCNN(nn.Module):
         evaltime('disp pp')
         target = dps['targets']['left'][0]
         calib = target.get_field('calib').calib
-        pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
+        if self.cfg.detector_3d.use_lidar:
+            loguru.logger.warning("use lidar!!")
+            pts_rect = dps['lidar'][0]
+        else:
+            pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
         vis3d.add_point_cloud(pts_rect, name='pts_rect')
         keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
                (pts_rect[:, 1] > -3) & (pts_rect[:, 1] < 3) \
@@ -323,9 +331,9 @@ class DRCNN(nn.Module):
                                        rect, Trv2c)
         evaltime('pp1')
         # augmentation
-        aug_cfg = self.cfg.detector_3d.aug
-        if aug_cfg.on is True:
-            gt_boxes, points = random_flip(gt_boxes, pts_lidar)
+        if self.cfg.detector_3d.aug_on is True:
+            aug_cfg = self.cfg.detector_3d.aug
+            gt_boxes, points = random_flip(gt_boxes, points)
             gt_boxes, points = global_rotation(gt_boxes, points, rotation=aug_cfg.global_rotation_noise)
             gt_boxes, points = global_scaling_v2(gt_boxes, points, *aug_cfg.global_scaling_noise)
 
@@ -334,9 +342,9 @@ class DRCNN(nn.Module):
             gt_boxes, points = global_translate(gt_boxes, points, global_loc_noise_std)
 
             bv_range = voxel_generator.point_cloud_range[[0, 1, 3, 4]]
-            mask = filter_gt_box_outside_range(gt_boxes, bv_range)
+            mask = filter_gt_box_outside_range(to_array(gt_boxes), bv_range)
             gt_boxes = gt_boxes[mask]
-            gt_classes = gt_classes[mask]
+            # gt_classes = gt_classes[mask]
 
         # limit rad to [-pi, pi]
         gt_boxes[:, 6] = limit_period(gt_boxes[:, 6], offset=0.5, period=2 * np.pi)
@@ -364,12 +372,16 @@ class DRCNN(nn.Module):
 
         coordinates = torch.from_numpy(coordinates).long().cuda()
         # evaltime('pp2.2')
-        coordinates = torch.cat([coordinates, torch.full_like(coordinates[:, 0:1], 0)], dim=1)
+        voxels = torch.from_numpy(voxels).cuda()
+        num_points = torch.from_numpy(num_points).long().cuda()
+        vis3d.add_point_cloud(coordinates * torch.tensor(voxel_size.tolist()[::-1]).float().cuda()[None],
+                              name='coordinates')
+        vis3d.add_point_cloud(voxels[..., :3].reshape(-1, 3), name='voxels')
+        vis3d.add_point_cloud(points, name='points')
         example = {
-            'voxels': torch.from_numpy(voxels).cuda(),
-            'num_points': torch.from_numpy(num_points).long().cuda(),
+            'voxels': voxels,
+            'num_points': num_points,
             'coordinates': coordinates,
-            # "num_voxels": torch.tensor([voxels.shape[0]], dtype=torch.long).cuda(),
             'rect': rect[None],
             'Trv2c': Trv2c[None],
             'P2': torch.from_numpy(matrix_3x4_to_4x4(calib.P2)).float().cuda()[None],
@@ -405,5 +417,11 @@ class DRCNN(nn.Module):
                 'reg_targets': torch.from_numpy(targets_dict['bbox_targets']).float().cuda()[None],
                 'reg_weights': torch.from_numpy(targets_dict['bbox_outside_weights']).float().cuda()[None],
             })
+            pos_keep = targets_dict['labels'] == 1
+            box3d = box_lidar_to_camera(anchors[pos_keep], rect, Trv2c)
+            box3d = Box3DList(box3d[:, [0, 1, 2, 4, 5, 3, 6]].float(), "xyzhwl_ry")
+            vis3d.add_box3dlist(box3d, name='pos_anchors')
         evaltime('pp5')
+        example['coordinates'] = torch.cat([example['coordinates'], torch.full_like(coordinates[:, 0:1], 0)], dim=1)
+        example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid'])]
         return example

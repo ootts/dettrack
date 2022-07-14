@@ -42,7 +42,7 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         self.transforms = transforms
         self.shape_prior_base = self.cfg.shape_prior_base
         offline_2d_predictions_path = self.cfg.offline_2d_predictions_path
-        filter_empty = self.cfg.filter_empty
+        filter_empty = self.cfg.filter_empty and 'train' in self.split and cfg.mode == 'train'
         # make cache or read cached annotation
         self.annotations = self.read_annotations()
         self.infos = self.read_info()
@@ -109,6 +109,9 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             rp = rp.resize(targets['right'].size)
             dps['predictions'] = {'left': lp, 'right': rp}
         dps['imgid'] = int(self.ids[index])
+        if self.cfg.load_lidar:
+            lidar = self.get_lidar(index)
+            dps['lidar'] = lidar
         return dps
 
     def get_image(self, index):
@@ -303,6 +306,15 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
             pred = pickle.load(f)
         lpmem, rpmem = pred['left'], pred['right']
         return lpmem, rpmem
+
+    def get_lidar(self, index):
+        imgid = self.ids[index]
+        lidar = load_velodyne(self.root, 'training', imgid)[:, :3]
+        calib = load_calib(self.root, 'training', imgid)
+        lidar = calib.lidar_to_rect(lidar)
+        keep = calib.filter_fov_pts(lidar)
+        lidar = lidar[keep].astype(np.float32)
+        return lidar
 
     def get_kins_mask(self, index, ):
         imgid = self.ids[index]

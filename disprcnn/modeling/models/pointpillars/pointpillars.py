@@ -440,11 +440,11 @@ class PointPillars(nn.Module):
                 }
             else:
                 predictions_dict = {
-                    "bbox": None,
-                    "box3d_camera": None,
-                    "box3d_lidar": None,
-                    "scores": None,
-                    "label_preds": None,
+                    "bbox": torch.empty([0, 4], dtype=torch.float, device='cuda'),
+                    "box3d_camera": torch.empty([0, 7], dtype=torch.float, device='cuda'),
+                    "box3d_lidar": torch.empty([0, 7], dtype=torch.float, device='cuda'),
+                    "scores": torch.empty([0, ], dtype=torch.float, device='cuda'),
+                    "label_preds": torch.empty([0, ], dtype=torch.float, device='cuda'),
                     "image_idx": img_idx,
                 }
             predictions_dicts.append(predictions_dict)

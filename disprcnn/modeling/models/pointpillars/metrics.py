@@ -236,19 +236,6 @@ class PrecisionRecall(nn.Module):
                 total_scores = torch.sigmoid(preds)[..., 1:]
             else:
                 total_scores = F.softmax(preds, dim=-1)[..., 1:]
-        """
-        if preds.shape[self._dim] == 1:  # BCE
-            scores = torch.sigmoid(preds)
-        else:
-            # assert preds.shape[
-            #     self._dim] == 2, "precision only support 2 class"
-            # TODO: add support for [N, C, ...] format.
-            # TODO: add multiclass support
-            if self._use_sigmoid_score:
-                scores = torch.sigmoid(preds)[:, ..., 1:].sum(-1)
-            else:
-                scores = F.softmax(preds, dim=self._dim)[:, ..., 1:].sum(-1)
-        """
         scores = torch.max(total_scores, dim=-1)[0]
         if weights is None:
             weights = (labels != self._ignore_idx).float()

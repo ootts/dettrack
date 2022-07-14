@@ -150,7 +150,7 @@ class PointPillarsScatter(nn.Module):
         """
 
         super().__init__()
-        self.name = 'PointPillarsScatter'
+        # self.name = 'PointPillarsScatter'
         self.output_shape = output_shape
         self.ny = output_shape[2]
         self.nx = output_shape[3]

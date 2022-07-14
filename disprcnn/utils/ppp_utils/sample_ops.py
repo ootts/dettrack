@@ -1,3 +1,4 @@
+import os.path as osp
 import pathlib
 from functools import reduce
 
@@ -162,9 +163,10 @@ class DataBaseSamplerV2:
             num_sampled = len(sampled)
             s_points_list = []
             for info in sampled:
-                s_points = np.fromfile(
-                    str(pathlib.Path(root_path) / info["path"]),
-                    dtype=np.float32)
+                p = info['path']
+                if not osp.exists(p):
+                    p = osp.join(root_path, p)
+                s_points = np.fromfile(p, dtype=np.float32)
                 s_points = s_points.reshape([-1, num_point_features])
                 # if not add_rgb_to_points:
                 #     s_points = s_points[:, :4]

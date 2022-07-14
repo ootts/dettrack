@@ -125,8 +125,7 @@ class PointPillars(nn.Module):
         # num_points: [num_voxels]
         # coors: [num_voxels, 4]
         voxel_features = self.voxel_feature_extractor(voxels, num_points, coors)
-        spatial_features = self.middle_feature_extractor(
-            voxel_features, coors, batch_size_dev)
+        spatial_features = self.middle_feature_extractor(voxel_features, coors, batch_size_dev)
         preds_dict = self.rpn(spatial_features)
         box_preds = preds_dict["box_preds"]
         cls_preds = preds_dict["cls_preds"]
@@ -224,8 +223,10 @@ class PointPillars(nn.Module):
                 vis3d.add_image(img2, name=f"{imgid:06d}")
                 lidar = calib.lidar_to_rect(lidar)
                 vis3d.add_point_cloud(lidar)
-                if len(box3d) > 0:
-                    vis3d.add_boxes(box3d.convert("corners").bbox_3d.reshape(-1, 8, 3), name='pred')
+                vis_keep = (result.get_field('scores') > self.cfg.vis_threshold)
+                box3d_vis = box3d[vis_keep]
+                if len(box3d_vis) > 0:
+                    vis3d.add_boxes(box3d_vis.convert("corners").bbox_3d.reshape(-1, 8, 3), name='pred')
                 labels = load_label_2(KITTIROOT, 'training', imgid, ['Car'])
                 gt_box3d = []
                 for label in labels:
@@ -266,7 +267,7 @@ class PointPillars(nn.Module):
                                                num_class_with_bg)
         batch_box_preds = self.box_coder.decode_torch(batch_box_preds,
                                                       batch_anchors)
-        # if self.use_direction_classifier:
+
         batch_dir_preds = preds_dict["dir_cls_preds"]
         batch_dir_preds = batch_dir_preds.view(batch_size, -1, 2)
         # else:

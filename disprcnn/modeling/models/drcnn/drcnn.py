@@ -331,7 +331,7 @@ class DRCNN(nn.Module):
                                        rect, Trv2c)
         evaltime('pp1')
         # augmentation
-        if self.cfg.detector_3d.aug_on is True:
+        if self.cfg.detector_3d.aug_on is True and self.pointpillars.training:
             aug_cfg = self.cfg.detector_3d.aug
             gt_boxes, points = random_flip(gt_boxes, points)
             gt_boxes, points = global_rotation(gt_boxes, points, rotation=aug_cfg.global_rotation_noise)

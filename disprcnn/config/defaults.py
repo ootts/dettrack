@@ -153,6 +153,7 @@ _C.model.pointpillars.preprocess.velodyne_template = ""
 _C.model.pointpillars.preprocess.velodyne_reduced_dir = ""
 
 _C.model.pointpillars.num_classes = 1
+_C.model.pointpillars.vis_threshold = 0.5
 # _C.model.pointpillars.use_rotate_nms = False
 _C.model.pointpillars.multiclass_nms = False
 _C.model.pointpillars.use_bev = False

@@ -19,11 +19,11 @@ model:
 #    input_size: 112
 datasets:
   train: ("kittiobj_train",)
-  test: "kittiobj_val"
+  #  test: "kittiobj_val"
   #  test: "kittiobj_test"
   #  test: "kittikins_valmini"
-#  test: "kittitracking_valmini"
-#  test: "kittiobj_train"
+  #  test: "kittitracking_valmini"
+  test: "kittiobj_train"
 #  test: "kittiobj_valmini"
 solver:
   trainer: drcnn

@@ -78,7 +78,7 @@ def main():
     from disprcnn.engine.defaults import default_argument_parser
     parser = default_argument_parser()
     args = parser.parse_args()
-    args.config_file = 'configs/pointpillars/lidar/preprocess.yaml'
+    args.config_file = 'configs/pointpillars/disprcnn/preprocess.yaml'
     cfg = setup(args)
 
     save_dir = cfg.model.pointpillars.preprocess.save_dir

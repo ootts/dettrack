@@ -27,8 +27,10 @@ pred_path = osp.join(cfg.output_dir, 'inference', cfg.datasets.test, 'prediction
 preds = torch.load(pred_path, 'cpu')
 dmp = DisparityMapProcessor()
 assert len(preds) == len(ds)
+
 output_dir = 'data/disprcnn/pseudo_lidar/training/velodyne'
 os.makedirs(output_dir, exist_ok=True)
+
 vis3d = Vis3D(
     xyz_pattern=('x', '-y', '-z'),
     out_folder="dbg",

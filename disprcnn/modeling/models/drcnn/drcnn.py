@@ -1,5 +1,6 @@
 import os.path as osp
 import loguru
+import numba.cuda
 import numpy as np
 import pytorch_ssim
 import torch
@@ -358,8 +359,6 @@ class DRCNN(nn.Module):
             print()
 
     def prepare_pointpillars_input(self, dps, left_result, right_result):
-        # todo: check for inference
-        # todo: test running speed.
         vis3d = Vis3D(
             xyz_pattern=('x', '-y', '-z'),
             out_folder="dbg",
@@ -368,7 +367,7 @@ class DRCNN(nn.Module):
             enable=self.dbg,
         )
         # evaltime = EvalTime(disable=not self.total_cfg.evaltime, do_print=False)
-        evaltime = EvalTime()
+        evaltime = EvalTime(disable=True)
         evaltime('')
         dmp = DisparityMapProcessor()
         voxel_generator = self.voxel_generator

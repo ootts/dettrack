@@ -84,6 +84,7 @@ class DRCNN(nn.Module):
         self.idispnet_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
         self.pp_prep_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
         self.pp_time_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
+        self.nobj_meter = AverageMeter(ignore_first=20, enable=self.total_cfg.evaltime)
         if self.total_cfg.evaltime:
             self.tb_timer = SummaryWriter(osp.join(self.total_cfg.output_dir, "evaltime", self.total_cfg.datasets.test),
                                           flush_secs=20)
@@ -136,6 +137,9 @@ class DRCNN(nn.Module):
                 # print('match', self.match_time_meter.avg)
                 # self.tb_timer.add_scalar("forward/match", match_time, global_step)
                 self.tb_timer.add_scalar("forward/match_avg", self.match_time_meter.avg, global_step)
+                self.nobj_meter.update(len(left_result))
+                self.tb_timer.add_scalar("forward/nobj_det_avg", self.nobj_meter.avg, global_step)
+
             left_result.add_field('imgid', dps['imgid'][0].item())
             right_result.add_field('imgid', dps['imgid'][0].item())
             if self.dbg:

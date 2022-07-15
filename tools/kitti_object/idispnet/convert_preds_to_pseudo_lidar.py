@@ -18,7 +18,7 @@ from disprcnn.data.build import make_data_loader
 
 parser = default_argument_parser()
 args = parser.parse_args()
-args.config_file = 'configs/idispnet/kittiobj/kittiobj_resizegray.yaml'
+args.config_file = 'configs/idispnet/kittiobj/kittiobj_resizegray_112.yaml'
 cfg = setup(args, freeze=False)
 cfg.dbg = False
 
@@ -28,7 +28,7 @@ preds = torch.load(pred_path, 'cpu')
 dmp = DisparityMapProcessor()
 assert len(preds) == len(ds)
 
-output_dir = 'data/disprcnn/pseudo_lidar/training/velodyne'
+output_dir = 'data/disprcnn_112/pseudo_lidar/training/velodyne'
 os.makedirs(output_dir, exist_ok=True)
 
 vis3d = Vis3D(

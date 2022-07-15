@@ -1,17 +1,12 @@
 import os
 import os.path as osp
-import copy
 import pathlib
 import pickle
 
-import fire
 import numpy as np
 import tqdm
 
 from disprcnn.utils.ppp_utils import box_np_ops
-from skimage import io as imgio
-
-from disprcnn.utils.ppp_utils import kitti_common as kitti
 
 
 def _create_reduced_point_cloud(data_path,
@@ -78,7 +73,7 @@ def main():
     from disprcnn.engine.defaults import default_argument_parser
     parser = default_argument_parser()
     args = parser.parse_args()
-    args.config_file = 'configs/pointpillars/disprcnn/preprocess.yaml'
+    args.config_file = 'configs/pointpillars/disprcnn_112/preprocess.yaml'
     cfg = setup(args)
 
     save_dir = cfg.model.pointpillars.preprocess.save_dir

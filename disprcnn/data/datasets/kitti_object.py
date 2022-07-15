@@ -83,6 +83,7 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         print('using dataset of length', self.__len__())
 
     def __getitem__(self, index):
+        # index = 2
         imgs = self.get_image(index)
         targets = self.get_ground_truth(index)
         dps = {}

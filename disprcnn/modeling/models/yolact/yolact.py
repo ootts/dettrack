@@ -213,29 +213,29 @@ class Yolact(nn.Module):
 
             return pred_outs
         else:
-            if self.cfg.use_mask_scoring:
-                pred_outs['score'] = torch.sigmoid(pred_outs['score'])
+            assert not self.cfg.use_mask_scoring
+            # pred_outs['score'] = torch.sigmoid(pred_outs['score'])
 
-            if self.cfg.use_focal_loss:
-                if self.cfg.use_sigmoid_focal_loss:
-                    # Note: even though conf[0] exists, this mode doesn't train it so don't use it
-                    pred_outs['conf'] = torch.sigmoid(pred_outs['conf'])
-                    if self.cfg.use_mask_scoring:
-                        pred_outs['conf'] *= pred_outs['score']
-                elif self.cfg.use_objectness_score:
-                    # See focal_loss_sigmoid in multibox_loss.py for details
-                    objectness = torch.sigmoid(pred_outs['conf'][:, :, 0])
-                    pred_outs['conf'][:, :, 1:] = objectness[:, :, None] * F.softmax(pred_outs['conf'][:, :, 1:], -1)
-                    pred_outs['conf'][:, :, 0] = 1 - objectness
-                else:
-                    pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
-            else:
-                if self.cfg.use_objectness_score:
-                    objectness = torch.sigmoid(pred_outs['conf'][:, :, 0])
-                    pred_outs['conf'][:, :, 1:] = (objectness > 0.10)[..., None] \
-                                                  * F.softmax(pred_outs['conf'][:, :, 1:], dim=-1)
-                else:
-                    pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
+            assert not self.cfg.use_focal_loss
+            #     if self.cfg.use_sigmoid_focal_loss:
+            #         # Note: even though conf[0] exists, this mode doesn't train it so don't use it
+            #         pred_outs['conf'] = torch.sigmoid(pred_outs['conf'])
+            #         if self.cfg.use_mask_scoring:
+            #             pred_outs['conf'] *= pred_outs['score']
+            #     elif self.cfg.use_objectness_score:
+            #         # See focal_loss_sigmoid in multibox_loss.py for details
+            #         objectness = torch.sigmoid(pred_outs['conf'][:, :, 0])
+            #         pred_outs['conf'][:, :, 1:] = objectness[:, :, None] * F.softmax(pred_outs['conf'][:, :, 1:], -1)
+            #         pred_outs['conf'][:, :, 0] = 1 - objectness
+            #     else:
+            #         pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
+            # else:
+            assert not self.cfg.use_objectness_score
+            #     objectness = torch.sigmoid(pred_outs['conf'][:, :, 0])
+            #     pred_outs['conf'][:, :, 1:] = (objectness > 0.10)[..., None] \
+            #                                   * F.softmax(pred_outs['conf'][:, :, 1:], dim=-1)
+            # else:
+            pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
 
             rets = self.detect(pred_outs, self)
             if return_features:

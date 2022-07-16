@@ -39,7 +39,7 @@ class BoxList(object):
             raise ValueError("mode should be 'xyxy' or 'xywh'")
 
         self.bbox = bbox
-        self.size = image_size  # (image_width, image_height)
+        self.size = list(image_size)  # (image_width, image_height)
         self.mode = mode
         self.extra_fields = {}
         self.PixelWise_map = {}
@@ -491,52 +491,71 @@ class BoxList(object):
         s += "mode={})".format(self.mode)
         return s
 
-    def plot(self, img=None, show=False, **kwargs):
+    def plot(self, img=None, show=False, calib=None, draw_mask=True, ignore_2d_when_3d_exists=False, **kwargs):
         import matplotlib.pyplot as plt
         from matplotlib import colors as mcolors
         plt.close("all")
         plt.axis('off')
+        plt.tight_layout(pad=0)
         if img is not None:
             plt.imshow(to_array(img, dtype=np.uint8))
         colors = list(mcolors.BASE_COLORS.keys())
+        if self.has_field("trackids"):
+            trackids = self.get_field("trackids").tolist()
+        else:
+            trackids = list(range(len(self)))
         for i, box in enumerate(self.convert('xywh').bbox.tolist()):
             x, y, w, h = box
-            c = colors[i % len(colors)]
-            plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c))
-            text = str(i)
-            # plt.text(x, y, f'{i}', color=c, **kwargs)
+            c = colors[trackids[i] % len(colors)]
+            if not (ignore_2d_when_3d_exists and self.has_field("box3d")):
+                plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c))
+            text = str(trackids[i])
             if self.has_field('scores'):
                 text = text + " " + '%.2f' % self.get_field('scores').tolist()[i]
                 plt.text(x, y, text, color=c, **kwargs)
-        if self.has_field('mask'):
-            masks = self.get_field('mask')
-            from disprcnn.modeling.roi_heads.mask_head.inference import Masker
-            masks = Masker()([masks], [self])[0].squeeze(1).cpu().byte().numpy()
-            for m in masks:
-                contour, hierarchy = cv2_util.findContours(
-                    m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
-                )
-                for c in contour:
-                    c = c.squeeze(1)
-                    plt.gca().add_patch(plt.Polygon(c, fill=False, **kwargs))
-        elif self.has_field('masks'):
-            masks = self.get_field('masks').cpu().byte().numpy()
-            for i, m in enumerate(masks):
-                contour, hierarchy = cv2_util.findContours(
-                    m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
-                )
-                for c in contour:
-                    c = c.squeeze(1)
-                    plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[i % len(colors)]))
-        elif self.has_map("masks"):
-            masks = self.get_map('masks').convert('mask').get_mask_tensor().cpu().numpy().astype(np.uint8)
-            for i, m in enumerate(masks):
-                contour, hierarchy = cv2_util.findContours(
-                    m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
-                )
-                for c in contour:
-                    c = c.squeeze(1)
-                    plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[i % len(colors)]))
+        if draw_mask:
+            if self.has_field('mask'):
+                masks = self.get_field('mask')
+                from disprcnn.modeling.roi_heads.mask_head.inference import Masker
+                masks = Masker()([masks], [self])[0].squeeze(1).cpu().byte().numpy()
+                for m in masks:
+                    contour, hierarchy = cv2_util.findContours(
+                        m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
+                    )
+                    for c in contour:
+                        c = c.squeeze(1)
+                        plt.gca().add_patch(plt.Polygon(c, fill=False, **kwargs))
+            elif self.has_field('masks'):
+                masks = self.get_field('masks').cpu().byte().numpy()
+                for i, m in enumerate(masks):
+                    contour, hierarchy = cv2_util.findContours(
+                        m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
+                    )
+                    for c in contour:
+                        c = c.squeeze(1)
+                        plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[i % len(colors)]))
+            elif self.has_map("masks"):
+                masks = self.get_map('masks').convert('mask').get_mask_tensor(squeeze=False).cpu().numpy().astype(
+                    np.uint8)
+                for i, m in enumerate(masks):
+                    contour, hierarchy = cv2_util.findContours(
+                        m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1
+                    )
+                    for c in contour:
+                        c = c.squeeze(1)
+                        plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[trackids[i] % len(colors)]))
+        if self.has_field("box3d"):
+            predcorners = self.get_field('box3d').convert('corners').bbox_3d.view(-1, 8, 3)
+            corners = calib.corners3d_to_img_boxes(predcorners)[1].cpu().numpy()
+            for ci, c in enumerate(corners):
+                color = colors[trackids[ci] % len(colors)]
+                pts = np.array([c[[0, 1, 2, 3, 0, 4, 7, 3]]])
+                from matplotlib import collections as mc
+                seg = mc.LineCollection(pts, colors=color, linewidths=1, )
+                plt.gca().add_collection(seg)
+                pts = np.array([c[[5, 4, 7, 6, 5, 1, 2, 6]]])
+                seg = mc.LineCollection(pts, colors=color, linewidths=1)
+                plt.gca().add_collection(seg)
         if show:
             plt.show()
 

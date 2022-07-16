@@ -1,3 +1,6 @@
+import os
+
+import matplotlib.pyplot as plt
 import os.path as osp
 import loguru
 import numba.cuda
@@ -10,9 +13,10 @@ from disprcnn.data.datasets.kitti_velodyne import random_flip, global_rotation, 
     global_translate, \
     filter_gt_box_outside_range
 from disprcnn.modeling.models.pointpillars.pointpillars import PointPillars
+from disprcnn.modeling.models.yolact.yolact_tracking import YolactTracking
 from disprcnn.structures.bounding_box_3d import Box3DList
 from disprcnn.structures.boxlist_ops import boxlist_iou
-from disprcnn.utils.pn_utils import to_array
+from disprcnn.utils.pn_utils import to_array, to_tensor
 from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
 from disprcnn.utils.ppp_utils.box_np_ops import rbbox2d_to_near_bbox, limit_period, sparse_sum_for_anchors_mask, \
     fused_get_anchors_area
@@ -52,11 +56,17 @@ class DRCNN(nn.Module):
         self.evaltime = EvalTime(disable=not cfg.evaltime, do_print=False)
         # self.detector2d_timer = Timer(ignore_first_n=20)
         # self.idispnet_timer = Timer(ignore_first_n=20)
+        assert int(self.cfg.yolact_on) + int(self.cfg.yolact_tracking_on) == 1
         if self.cfg.yolact_on:
             self.yolact = Yolact(cfg)
             ckpt = torch.load(self.cfg.pretrained_yolact, 'cpu')
             ckpt = {k.lstrip("model."): v for k, v in ckpt['model'].items()}
             self.yolact.load_state_dict(ckpt)
+        if self.cfg.yolact_tracking_on:
+            self.yolact_tracking = YolactTracking(cfg)
+            ckpt = torch.load(self.cfg.pretrained_yolact_tracking, 'cpu')
+            ckpt = {k.lstrip("model."): v for k, v in ckpt['model'].items()}
+            self.yolact_tracking.load_state_dict(ckpt)
         if self.cfg.idispnet_on:
             self.idispnet = PSMNet(cfg)
             self.roi_align = ROIAlign((self.idispnet.input_size, self.idispnet.input_size), 1.0, 0)
@@ -106,29 +116,39 @@ class DRCNN(nn.Module):
             left_result = dps['predictions']['left'][0]
             right_result = dps['predictions']['right'][0]
         else:
-            assert self.yolact.training is False
             self.evaltime('begin')
-            # start = torch.cuda.Event(enable_timing=True)
-            # end = torch.cuda.Event(enable_timing=True)
-            # start.record()
-            with torch.no_grad():
-                preds_left = self.yolact({'image': dps['images']['left']})
-                preds_right = self.yolact({'image': dps['images']['right']})
-            # end.record()
-            h, w, _ = dps['original_images']['left'][0].shape
-            yolact_forward_time = self.evaltime('yolact forward')
-            self.time_meter.update(yolact_forward_time)
-            # self.time_meter.update(start.elapsed_time(end))
-            if self.total_cfg.evaltime:
-                self.tb_timer.add_scalar("forward/yolact_avg", self.time_meter.avg, global_step)
-            left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
-            right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
-            decode_time = self.evaltime('decode')
-            self.decode_time_meter.update(decode_time)
-            if self.total_cfg.evaltime:
-                # print('decode', self.decode_time_meter.avg)
-                # self.tb_timer.add_scalar("forward/decode", decode_time, global_step)
-                self.tb_timer.add_scalar("forward/decode_avg", self.decode_time_meter.avg, global_step)
+            if self.cfg.yolact_on:
+                assert self.yolact.training is False
+                with torch.no_grad():
+                    preds_left = self.yolact({'image': dps['images']['left']})
+                    preds_right = self.yolact({'image': dps['images']['right']})
+                h, w, _ = dps['original_images']['left'][0].shape
+                yolact_forward_time = self.evaltime('yolact forward')
+                self.time_meter.update(yolact_forward_time)
+                # self.time_meter.update(start.elapsed_time(end))
+                if self.total_cfg.evaltime:
+                    self.tb_timer.add_scalar("forward/yolact_avg", self.time_meter.avg, global_step)
+                left_result = self.decode_yolact_preds(preds_left, h, w, retvalid=self.cfg.retvalid)
+                right_result = self.decode_yolact_preds(preds_right, h, w, add_mask=False)
+                decode_time = self.evaltime('decode')
+                self.decode_time_meter.update(decode_time)
+                if self.total_cfg.evaltime:
+                    self.tb_timer.add_scalar("forward/decode_avg", self.decode_time_meter.avg, global_step)
+            else:
+                assert self.cfg.yolact_tracking_on is True
+                assert self.yolact_tracking.training is False
+                with torch.no_grad():
+                    left_result, _ = self.yolact_tracking({'image': dps['images']['left'],
+                                                           'seq': dps['seq'],
+                                                           'width': dps['width'],
+                                                           'height': dps['height'],
+                                                           }, track=True, add_mask=True, mask_mode=self.cfg.mask_mode)
+                    right_result, _ = self.yolact_tracking({'image': dps['images']['right'],
+                                                            'seq': dps['seq'],
+                                                            'width': dps['width'],
+                                                            'height': dps['height'],
+                                                            }, track=False, add_mask=False)
+
             left_result, right_result = self.match_lp_rp(left_result, right_result,
                                                          dps['original_images']['left'][0],
                                                          dps['original_images']['right'][0])
@@ -209,6 +229,7 @@ class DRCNN(nn.Module):
                         left_result = left_result[keep]
                         left_result.PixelWise_map['masks'] = left_result.PixelWise_map['masks'].convert(
                             self.cfg.mask_mode)
+                        right_result = right_result[keep]
             pp_forward_time = self.evaltime('pp forward')
             self.pp_time_meter.update(pp_forward_time)
             if self.total_cfg.evaltime:
@@ -218,6 +239,8 @@ class DRCNN(nn.Module):
         # print()
         ##############  ↓ Step 4: return  ↓  ##############
         outputs.update({'left': left_result, 'right': right_result})
+        if self.dbg:
+            self.vis_final_result(dps, left_result, right_result)
         return outputs, loss_dict
 
     def decode_yolact_preds(self, preds, h, w, add_mask=True, retvalid=False):
@@ -387,17 +410,17 @@ class DRCNN(nn.Module):
         evaltime('disp pp 0.3')
         rect = torch.eye(4).cuda().float()
         evaltime('disp pp 0.4')
-        rect[:3, :3] = torch.from_numpy(calib.R0).cuda()
+        rect[:3, :3] = to_tensor(calib.R0, torch.float, 'cuda')
         evaltime('disp pp 0.5')
         Trv2c = torch.eye(4).cuda().float()
         evaltime('disp pp 0.6')
-        Trv2c[:3, :4] = torch.from_numpy(calib.V2C).cuda()
+        Trv2c[:3, :4] = to_tensor(calib.V2C, torch.float, 'cuda')
         evaltime('disp pp 0.7')
-        gt_boxes = box_camera_to_lidar(target.get_field('box3d').convert('xyzhwl_ry').bbox_3d[:, [0, 1, 2, 5, 3, 4, 6]],
-                                       rect, Trv2c)
-        evaltime('pp1')
         # augmentation
         if self.cfg.detector_3d.aug_on is True and self.pointpillars.training:
+            gt_boxes = box_camera_to_lidar(
+                target.get_field('box3d').convert('xyzhwl_ry').bbox_3d[:, [0, 1, 2, 5, 3, 4, 6]],
+                rect, Trv2c)
             aug_cfg = self.cfg.detector_3d.aug
             gt_boxes, points = random_flip(gt_boxes, points)
             gt_boxes, points = global_rotation(gt_boxes, points, rotation=aug_cfg.global_rotation_noise)
@@ -411,14 +434,13 @@ class DRCNN(nn.Module):
             mask = filter_gt_box_outside_range(to_array(gt_boxes), bv_range)
             gt_boxes = gt_boxes[mask]
             # gt_classes = gt_classes[mask]
-
-        gt_boxes[:, 6] = limit_period(gt_boxes[:, 6], offset=0.5, period=2 * np.pi)
-        # evaltime('pp1.1')
-        if self.dbg:
-            vis3d.add_point_cloud(lidar_to_camera(points[:, :3], rect, Trv2c))
-            box3d = box_lidar_to_camera(gt_boxes, rect, Trv2c)
-            box3d = Box3DList(box3d[:, [0, 1, 2, 4, 5, 3, 6]].float(), "xyzhwl_ry")
-            vis3d.add_box3dlist(box3d)
+            gt_boxes[:, 6] = limit_period(gt_boxes[:, 6], offset=0.5, period=2 * np.pi)
+            # evaltime('pp1.1')
+            if self.dbg:
+                vis3d.add_point_cloud(lidar_to_camera(points[:, :3], rect, Trv2c))
+                box3d = box_lidar_to_camera(gt_boxes, rect, Trv2c)
+                box3d = Box3DList(box3d[:, [0, 1, 2, 4, 5, 3, 6]].float(), "xyzhwl_ry")
+                vis3d.add_box3dlist(box3d)
         # evaltime('pp1.2')
         if self.cfg.detector_3d.shuffle_points:
             perm = np.random.permutation(points.shape[0])
@@ -450,7 +472,7 @@ class DRCNN(nn.Module):
             'coordinates': coordinates,
             'rect': rect[None],
             'Trv2c': Trv2c[None],
-            'P2': torch.from_numpy(matrix_3x4_to_4x4(calib.P2)).float().cuda()[None],
+            'P2': to_tensor(matrix_3x4_to_4x4(calib.P2), torch.float, 'cuda')[None],
         }
         evaltime('pp3')
         anchor_cache = self.anchor_cache
@@ -490,4 +512,32 @@ class DRCNN(nn.Module):
         evaltime('pp5')
         example['coordinates'] = torch.cat([torch.full_like(coordinates[:, 0:1], 0), example['coordinates']], dim=1)
         example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid'])]
+        example['calib'] = calib
+        example['width'] = dps['width'].item()
+        example['height'] = dps['height'].item()
         return example
+
+    def vis_final_result(self, dps, left_result, right_result):
+        vis3d = Vis3D(
+            xyz_pattern=('x', '-y', '-z'),
+            out_folder="dbg",
+            sequence="drcnn_vis_final_result",
+            # auto_increase=False,
+            enable=self.dbg,
+        )
+        dmp = DisparityMapProcessor()
+        disparity_map = dmp(left_result, right_result)
+        target = dps['targets']['left'][0]
+        calib = target.get_field('calib').calib
+        pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
+        vis3d.add_point_cloud(pts_rect)
+        vis3d.add_boxes(left_result.get_field('box3d').convert('corners').bbox_3d, name='pred')
+        left_result.plot(dps['original_images']['left'][0], show=False, calib=calib, ignore_2d_when_3d_exists=True,
+                         draw_mask=False)
+        outpath = osp.join(vis3d.out_folder, vis3d.sequence_name, f'{vis3d.scene_id:05d}', 'images', 'left_result.png')
+        os.makedirs(osp.dirname(outpath))
+        plt.savefig(outpath)
+        outpath = osp.join(vis3d.out_folder, vis3d.sequence_name, f'{vis3d.scene_id:05d}', 'images', 'right_result.png')
+        right_result.plot(dps['original_images']['right'][0], show=False)
+        plt.savefig(outpath)
+        print()

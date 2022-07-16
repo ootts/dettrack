@@ -9,7 +9,6 @@ model:
     alpha: 0.1
     beta: 10.0
     thresh: 0.0
-    # beta: 20
 datasets:
   train: ("kittitracking_train",)
   #  test: "kittitracking_val"

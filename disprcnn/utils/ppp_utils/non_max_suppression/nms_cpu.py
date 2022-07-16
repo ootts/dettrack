@@ -15,6 +15,7 @@ except:
         ["../cc/nms/nms_kernel.cu.cc", "../cc/nms/nms.cc"],
         current_dir / "nms.so",
         current_dir,
+        # includes=["/raid/linghao/project_data/dettrack/external/boost_1_65_1/boost"],
         cuda=True)
     from disprcnn.utils.ppp_utils.non_max_suppression.nms import (
         non_max_suppression_cpu, rotate_non_max_suppression_cpu)
@@ -54,8 +55,7 @@ def nms_jit(dets, thresh, eps=0.0):
     keep = []
     for _i in range(ndets):
         i = order[_i]  # start with highest score box
-        if suppressed[
-            i] == 1:  # if any box have enough iou with this, remove it
+        if suppressed[i] == 1:  # if any box have enough iou with this, remove it
             continue
         keep.append(i)
         for _j in range(_i + 1, ndets):

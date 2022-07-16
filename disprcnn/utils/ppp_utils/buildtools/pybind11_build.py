@@ -93,7 +93,7 @@ def load_pb11(sources,
         s = str(s)
         if ".cu" in s or ".cu.cc" in s:
             assert cuda is True, "cuda must be true if contain cuda file"
-            cmds.append(Nvcc(s, out(s), arch))
+            cmds.append(Nvcc(s, out(s), arch, includes=includes))
             outs.append(out(s))
         else:
             main_sources.append(s)

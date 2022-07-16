@@ -19,6 +19,8 @@ class DatasetCatalog(object):
             return get_kittikins(name)
         elif name.startswith("graykittikins"):
             return get_graykittikins(name)
+        elif name.startswith("kittitrackingstereo"):
+            return get_kittitrackingstereo(name)
         elif name.startswith("kittitracking"):
             return get_kittitracking(name)
         elif name.startswith("kittiobj"):
@@ -79,6 +81,22 @@ def get_kittitracking(name):
         # ds_len = 10
     return dict(
         factory='KITTITrackingDataset',
+        args={'root': 'data/kitti',
+              'split': split,
+              'ds_len': ds_len
+              }
+    )
+
+
+def get_kittitrackingstereo(name):
+    split = name.split("_")[1]
+    ds_len = -1
+    if split == 'valmini':
+        split = 'val'
+        ds_len = 700
+        # ds_len = 10
+    return dict(
+        factory='KITTITrackingStereoDataset',
         args={'root': 'data/kitti',
               'split': split,
               'ds_len': ds_len

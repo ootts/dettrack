@@ -172,7 +172,7 @@ def _cat(tensors, dim=0):
     return torch.cat(tensors, dim)
 
 
-def cat_boxlist(bboxes):
+def cat_boxlist(bboxes, ignore_fields=False, ignore_maps=False):
     """
     Concatenates a list of BoxList (having the same image size) into a
     single BoxList
@@ -188,18 +188,18 @@ def cat_boxlist(bboxes):
 
     mode = bboxes[0].mode
     assert all(bbox.mode == mode for bbox in bboxes)
-
-    fields = set(bboxes[0].fields())
-    assert all(set(bbox.fields()) == fields for bbox in bboxes)
-
-    maps = set(bboxes[0].maps())
-    assert all(set(bbox.maps()) == maps for bbox in bboxes)
+    if not ignore_fields:
+        fields = set(bboxes[0].fields())
+        assert all(set(bbox.fields()) == fields for bbox in bboxes)
+    if not ignore_maps:
+        maps = set(bboxes[0].maps())
+        assert all(set(bbox.maps()) == maps for bbox in bboxes)
 
     cat_boxes = BoxList(_cat([bbox.bbox for bbox in bboxes], dim=0), size, mode)
-
-    for field in fields:
-        data = _cat([bbox.get_field(field) for bbox in bboxes], dim=0)
-        cat_boxes.add_field(field, data)
+    if not ignore_fields:
+        for field in fields:
+            data = _cat([bbox.get_field(field) for bbox in bboxes], dim=0)
+            cat_boxes.add_field(field, data)
     #     todo: fix map
     # for map in maps:
     #     data = _cat([bbox.get_map(map) for bbox in bboxes], dim=0)

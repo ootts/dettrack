@@ -22,7 +22,7 @@ _C.model.yolact.backbone.pred_scales = [[24], [48], [96], [192], [384]]
 _C.model.yolact.backbone.preapply_sqrt = False
 _C.model.yolact.backbone.use_pixel_scales = True
 _C.model.yolact.backbone.use_square_anchors = True
-_C.model.yolact.pretrained_backbone = '/raid/linghao/project_data/yolact/weights/resnet50-19c8e357.pth'
+_C.model.yolact.pretrained_backbone = '../yolact/weights/resnet50-19c8e357.pth'
 
 _C.model.yolact.mask_type = 1
 _C.model.yolact.mask_proto_use_grid = False
@@ -249,6 +249,8 @@ _C.voxel_generator.max_number_of_points_per_voxel = 100
 _C.model.drcnn = CN()
 _C.model.drcnn.yolact_on = True
 _C.model.drcnn.pretrained_yolact = ''
+_C.model.drcnn.yolact_tracking_on = False
+_C.model.drcnn.pretrained_yolact_tracking = ''
 _C.model.drcnn.fix_yolact = True
 _C.model.drcnn.ssim_coef = 0.0
 _C.model.drcnn.ssim_intercept = 0.0
@@ -290,6 +292,9 @@ _C.dataset.kittiroi.mindisp = -48
 
 _C.dataset.kitti_tracking = CN()
 _C.dataset.kitti_tracking.use_gray = False
+
+_C.dataset.kitti_tracking_stereo = CN()
+_C.dataset.kitti_tracking_stereo.use_gray = False
 
 _C.dataset.kitti_velodyne = CN()
 _C.dataset.kitti_velodyne.without_reflectivity = False

@@ -597,6 +597,8 @@ class SegmentationMask(object):
         return len(self.instances)
 
     def __getitem__(self, item):
+        if self.mode != 'mask':
+            return self.convert("mask")[item].convert(self.mode)
         selected_instances = self.instances.__getitem__(item)
         return SegmentationMask(selected_instances, self.size, self.mode)
 

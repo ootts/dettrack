@@ -260,7 +260,7 @@ class YolactTracking(nn.Module):
                 new_tids = torch.arange(self.memory.shape[0], self.memory.shape[0] + unmatched.sum()).long().cuda()
                 cur_trackids[unmatched] = new_tids
                 self.memory = torch.cat([self.memory, roi_features[unmatched]], dim=0)
-                res_box = preds[0][unmatched]
+                # res_box = preds[0][unmatched]
                 if not isinstance(self.boxmemory, BoxList):
                     self.boxmemory = preds[0][unmatched]
                 else:

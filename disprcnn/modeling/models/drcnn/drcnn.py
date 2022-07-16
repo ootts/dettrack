@@ -148,7 +148,10 @@ class DRCNN(nn.Module):
                                                             'width': dps['width'],
                                                             'height': dps['height'],
                                                             }, track=False, add_mask=False)
-
+                yolact_forward_time = self.evaltime('yolact_tracking forward')
+                self.time_meter.update(yolact_forward_time)
+                if self.total_cfg.evaltime:
+                    self.tb_timer.add_scalar("forward/yolact_tracking_avg", self.time_meter.avg, global_step)
             left_result, right_result = self.match_lp_rp(left_result, right_result,
                                                          dps['original_images']['left'][0],
                                                          dps['original_images']['right'][0])

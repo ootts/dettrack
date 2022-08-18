@@ -499,7 +499,7 @@ class BoxList(object):
         plt.axis('off')
         plt.tight_layout(pad=0)
         if img is not None:
-            plt.imshow(to_array(img, dtype=np.uint8))
+            plt.imshow(to_array(img))
         colors = list(mcolors.BASE_COLORS.keys())
         if self.has_field("trackids"):
             trackids = self.get_field("trackids").tolist()

@@ -25,11 +25,25 @@ def norm(x, dim=None, keepdims=False):
         raise TypeError()
 
 
-def to_array(x, dtype=float):
+def torch_to_np_dtype(ttype):
+    type_map = {
+        torch.float16: np.dtype(np.float16),
+        torch.float32: np.dtype(np.float32),
+        torch.float64: np.dtype(np.float64),
+        torch.int32: np.dtype(np.int32),
+        torch.int64: np.dtype(np.int64),
+        torch.long: np.dtype(np.int64),
+        torch.uint8: np.dtype(np.uint8),
+        torch.byte: np.dtype(np.uint8),
+    }
+    return type_map[ttype]
+
+
+def to_array(x):
     if isinstance(x, np.ndarray):
-        return x.astype(dtype)
+        return x
     elif isinstance(x, torch.Tensor):
-        return x.detach().cpu().numpy().astype(dtype)
+        return x.detach().cpu().numpy().astype(torch_to_np_dtype(x.dtype))
     elif isinstance(x, list):
         return [to_array(a) for a in x]
     elif isinstance(x, SafeDict):

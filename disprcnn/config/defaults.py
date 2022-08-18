@@ -297,6 +297,7 @@ _C.dataset.kittiroi.mindisp = -48
 
 _C.dataset.kitti_tracking = CN()
 _C.dataset.kitti_tracking.use_gray = False
+_C.dataset.kitti_tracking.classes = ("__background__", "car", "dontcare")
 
 _C.dataset.kitti_tracking_stereo = CN()
 _C.dataset.kitti_tracking_stereo.use_gray = False

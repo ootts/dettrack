@@ -16,11 +16,11 @@ from tqdm import tqdm
 
 
 class KITTITrackingDataset(torch.utils.data.Dataset):
-    CLASSES = (
-        "__background__",
-        "car",
-        'dontcare'
-    )
+    # CLASSES = (
+    #     "__background__",
+    #     "car",
+    #     'dontcare'
+    # )
     NUM_TRAINING = 20
     NUM_TRAIN = 9
     NUM_VAL = 11
@@ -36,6 +36,8 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         self.root = root
         self.split = split
         self.gray = cfg.dataset.kitti_tracking.use_gray
+        self.cfg = cfg.dataset.kitti_tracking
+        KITTITrackingDataset.CLASSES = self.cfg.classes
         cls = KITTITrackingDataset.CLASSES
         self.remove_ignore = remove_ignore
         self.class_to_ind = dict(zip(cls, range(len(cls))))
@@ -44,7 +46,8 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         if split == 'train':
             self.seqs = [0, 2, 3, 4, 5, 7, 9, 11, 17]
         elif split == 'val':
-            self.seqs = [1, 6, 8, 10, 12, 13, 14, 15, 16, 18, 19]
+            # self.seqs = [1, 6, 8, 10, 12, 13, 14, 15, 16, 18, 19]
+            self.seqs = [15, 13, 1, 6, 8, 10, 12, 14, 16, 18, 19]
         else:
             raise NotImplementedError()
 
@@ -68,8 +71,8 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
 
             targets0 = self.get_ground_truth(seq, imgid0)
             targets1 = self.get_ground_truth(seq, imgid1)
-            targets0 = targets0[targets0.get_field('labels') == 1]  # remove not cars
-            targets1 = targets1[targets1.get_field('labels') == 1]  # remove not cars
+            targets0 = targets0[targets0.get_field('labels') > 0]
+            targets1 = targets1[targets1.get_field('labels') > 0]
 
             assert self.transforms is not None
 
@@ -147,40 +150,22 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         return left_img
 
     def get_ground_truth(self, seq, frameid):
-        if not is_testing_split(self.split):
-            labels = self.annotations[seq]['labels'][frameid]
-            boxes = self.annotations[seq]['boxes'][frameid]
-            trackids = self.annotations[seq]['trackids'][frameid]
-            info = self.get_img_info(seq, frameid)
-            height, width = info['height'], info['width']
-            # left target
-            target = BoxList(boxes, (width, height), mode="xyxy")
-            target.add_field("labels", labels)
-            target.add_field("trackids", trackids)
-            target.add_field('image_size', torch.tensor([[width, height]]).repeat(len(target), 1))
-            target.add_field('calib', Calib(self.get_calibration(seq, frameid), (width, height)))
-            # left_target.add_field('index', torch.full((len(left_target), 1), index, dtype=torch.long))
-            # left_target.add_field('imgid', torch.full((len(left_target), 1), int(img_id), dtype=torch.long))
-            target = target.clip_to_image(remove_empty=True)
-            return target
-        else:
-            # todo: not used
-            fakebox = torch.tensor([[0, 0, 0, 0]])
-            info = self.get_img_info(index)
-            height, width = info['height'], info['width']
-            # left target
-            target = BoxList(fakebox, (width, height), mode="xyxy")
-            target.add_field('image_size', torch.tensor([[width, height]]).repeat(len(target), 1))
-            target.add_field('calib', Calib(self.get_calibration(index), (width, height)))
-            target.add_field('index', torch.full((len(target), 1), index, dtype=torch.long))
-            target.add_field('masks', self.get_mask(index))
-            # left_target.add_field('kins_masks', self.get_kins_mask(index))
-            target.add_map('disparity', self.get_disparity(index))
-            target.add_field('imgid', torch.full((len(target), 1), int(img_id), dtype=torch.long))
-            # right target
-            right_target = BoxList(fakebox, (width, height), mode="xyxy")
-            target = {'left': target, 'right': right_target}
-            return target
+        assert not is_testing_split(self.split)
+        labels = self.annotations[seq]['labels'][frameid]
+        boxes = self.annotations[seq]['boxes'][frameid]
+        trackids = self.annotations[seq]['trackids'][frameid]
+        info = self.get_img_info(seq, frameid)
+        height, width = info['height'], info['width']
+        # left target
+        target = BoxList(boxes, (width, height), mode="xyxy")
+        target.add_field("labels", labels)
+        target.add_field("trackids", trackids)
+        target.add_field('image_size', torch.tensor([[width, height]]).repeat(len(target), 1))
+        target.add_field('calib', Calib(self.get_calibration(seq, frameid), (width, height)))
+        # left_target.add_field('index', torch.full((len(left_target), 1), index, dtype=torch.long))
+        # left_target.add_field('imgid', torch.full((len(left_target), 1), int(img_id), dtype=torch.long))
+        target = target.clip_to_image(remove_empty=True)
+        return target
 
     def __len__(self):
         return len(self.pairs)
@@ -191,8 +176,9 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
     def read_annotations(self):
         if is_testing_split(self.split):
             return {'left': [], 'right': []}
-        annodir = os.path.join(self.root, f"tracking/training/label_02")
-        anno_cache_path = os.path.join(annodir, f'annotations_{self.split}.pkl')
+        # annodir = os.path.join(self.root, f"tracking/training/label_02")
+        # anno_cache_path = os.path.join(annodir, f'annotations_{self.split}.pkl')
+        anno_cache_path = f"data/kitti_tracking/annotations_{'.'.join(KITTITrackingDataset.CLASSES)}.pkl"
         if os.path.exists(anno_cache_path):
             with open(anno_cache_path, 'rb') as f:
                 annotations = pickle.load(f)
@@ -211,7 +197,10 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
                         frame = int(frame)
                         trackid = int(trackid)
                         cls_str = cls_str.lower().strip()
-                        cls_str = 'car' if cls_str in ['car', 'van'] else '__background__'
+                        if cls_str in ['car', 'van']:
+                            cls_str = 'car'
+                        if cls_str not in KITTITrackingDataset.CLASSES:
+                            cls_str = '__background__'
                         cls = self.class_to_ind[cls_str]
                         if frame not in bbox_per_seq.keys():
                             bbox_per_seq[frame] = []
@@ -232,7 +221,9 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
                                      'trackids': trackids_per_seq,
                                      'P2': P2
                                      })
-            pickle.dump(annotations, open(anno_cache_path, 'wb'))
+            os.makedirs(osp.dirname(anno_cache_path), exist_ok=True)
+            with open(anno_cache_path, 'wb') as f:
+                pickle.dump(annotations, f)
         return annotations
 
     def read_info(self):

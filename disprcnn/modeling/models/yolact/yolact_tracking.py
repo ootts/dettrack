@@ -1,8 +1,15 @@
+import io
+
+import imageio
+import tempfile
+
 import torch.nn.functional as F
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+from PIL import Image
+
 from disprcnn.structures.segmentation_mask import SegmentationMask
 
 from disprcnn.utils.averagemeter import AverageMeter
@@ -14,6 +21,7 @@ from disprcnn.structures.bounding_box import BoxList
 
 from disprcnn.modeling.models.yolact.submodules import *
 from disprcnn.structures.boxlist_ops import boxlist_iou, cat_boxlist
+from disprcnn.utils.vis3d_ext import Vis3D
 from .layers.output_utils import postprocess
 from .yolact import Yolact
 
@@ -161,10 +169,10 @@ class YolactTracking(nn.Module):
         x = roi_features1
         x_n = [len(a) for a in preds1]
         match_score = self.track_head(x, ref_x, x_n, ref_x_n)
-        evaltime('head forward')
+        self.evaltime('head forward')
         ##############  ↓ Step : make gt and compute loss  ↓  ##############
         ids, id_weights = self.prepare_targets(preds0, preds1, dps)
-        evaltime('prepare targets')
+        self.evaltime('prepare targets')
         loss_match, acc = self.track_head.loss(match_score, ids, id_weights)
         output = {'metrics': {'acc': acc}}
         loss_dict = {'loss_match': loss_match}
@@ -179,7 +187,13 @@ class YolactTracking(nn.Module):
         return ious
 
     def forward_test(self, dps, track=True, add_mask=False, mask_mode='poly'):
-
+        vis3d = Vis3D(
+            xyz_pattern=('x', 'y', 'z'),
+            out_folder="dbg",
+            sequence="yolact_tracking_forward_test",
+            # auto_increase=,
+            enable=self.dbg,
+        )
         self.evaltime('2d begin')
         preds, feat = self.yolact({'image': dps['image']}, return_features=True)
         # if preds[0]['detection'] is not None:
@@ -285,20 +299,26 @@ class YolactTracking(nn.Module):
             self.meter_track.update(self.evaltime('track'))
             print('track', self.meter_track.avg)
         if self.dbg:
+            plt.title(f'global_step: {dps["global_step"]}')
             img = untsfm(dps['image'][0], width, height)
             plt.imshow(img)
             colors = list(mcolors.BASE_COLORS.keys())
             for i, box in enumerate(pred.convert('xywh').bbox.tolist()):
                 x, y, w, h = box
+                score = pred.get_field('scores').tolist()[i]
                 if track:
                     trackid = pred.get_field("trackids")[i]
                     c = colors[trackid % len(colors)]
-                    plt.text(x, y, f'{trackid}', color=c, fontsize='x-large')
+                    plt.text(x, y, f'{trackid}_{score:.2f}', color=c, fontsize='x-large')
                     plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c, linewidth=2))
                 else:
                     plt.gca().add_patch(
                         plt.Rectangle((x, y), w, h, fill=False, color=colors[i % len(colors)], linewidth=2))
-            plt.show()
+            img_buf = io.BytesIO()
+            plt.savefig(img_buf, format='png')
+            vis3d.add_image(Image.open(img_buf))
+            img_buf.close()
+            plt.close("all")
         loss_dict = {}
         return pred, loss_dict
 
@@ -309,41 +329,50 @@ class YolactTracking(nn.Module):
             return self.forward_test(dps, track=track, add_mask=add_mask, mask_mode=mask_mode)
 
     def decode_yolact_preds(self, preds, h, w, add_mask=False, retvalid=True, mask_mode='poly'):
-        # boxes = []
-        # for pred in preds:
-        #     if pred['detection'] is not None:
-        #         bbox = pred['detection']['box'].clone()
-        #         bbox[:, 0] *= w
-        #         bbox[:, 1] *= h
-        #         bbox[:, 2] *= w
-        #         bbox[:, 3] *= h
-        #     else:
-        #         bbox = torch.empty([0, 4], dtype=torch.float, device='cuda')
-        #     boxes.append(BoxList(bbox, image_size=[w, h]))
-
-        if preds[0]['detection'] is not None:
-            preds = postprocess(preds, w, h, to_long=False)
-            labels, scores, box2d, masks = preds
-        else:
-            box2d = torch.empty([0, 4], dtype=torch.float, device='cuda')
-            labels = torch.empty([0], dtype=torch.long, device='cuda')
-            scores = torch.empty([0], dtype=torch.float, device='cuda')
-            masks = torch.empty([0, h, w], dtype=torch.long, device='cuda')
-        boxlist = BoxList(box2d, (w, h))
-        boxlist.add_field("labels", labels + 1)
-        boxlist.add_field("scores", scores)
-        if add_mask:
-            keep = masks.sum(1).sum(1) > 20
-            boxlist = boxlist[keep]
-            masks = masks[keep]
-            if retvalid:
-                vec, masks = SegmentationMask(masks, (w, h), mode='mask').convert(mask_mode, retvalid=retvalid)
-                if vec is not None and not vec.all():
-                    boxlist = boxlist[vec]
+        if self.total_cfg.model.meta_architecture == 'YolactTracking':
+            boxes = []
+            for pred in preds:
+                if pred['detection'] is not None:
+                    bbox = pred['detection']['box'].clone()
+                    bbox[:, 0] *= w
+                    bbox[:, 1] *= h
+                    bbox[:, 2] *= w
+                    bbox[:, 3] *= h
+                    labels = pred['detection']['class'] + 1
+                    scores = pred['detection']['score']
+                else:
+                    bbox = torch.empty([0, 4], dtype=torch.float, device='cuda')
+                    labels = torch.empty([0, ], dtype=torch.long, device='cuda')
+                    scores = torch.empty([0, ], dtype=torch.float, device='cuda')
+                boxlist = BoxList(bbox, image_size=[w, h])
+                boxlist.add_field("labels", labels)
+                boxlist.add_field("scores", scores)
+                boxes.append(boxlist)
+            return boxes
+        elif self.total_cfg.model.meta_architecture == 'DRCNN':
+            if preds[0]['detection'] is not None:
+                preds = postprocess(preds, w, h, to_long=False)
+                labels, scores, box2d, masks = preds
             else:
-                masks = SegmentationMask(masks, (w, h), mode='mask').convert(mask_mode, retvalid=retvalid)
-            boxlist.add_map("masks", masks)
-        return [boxlist]
+                box2d = torch.empty([0, 4], dtype=torch.float, device='cuda')
+                labels = torch.empty([0], dtype=torch.long, device='cuda')
+                scores = torch.empty([0], dtype=torch.float, device='cuda')
+                masks = torch.empty([0, h, w], dtype=torch.long, device='cuda')
+            boxlist = BoxList(box2d, (w, h))
+            boxlist.add_field("labels", labels + 1)
+            boxlist.add_field("scores", scores)
+            if add_mask:
+                keep = masks.sum(1).sum(1) > 20
+                boxlist = boxlist[keep]
+                masks = masks[keep]
+                if retvalid:
+                    vec, masks = SegmentationMask(masks, (w, h), mode='mask').convert(mask_mode, retvalid=retvalid)
+                    if vec is not None and not vec.all():
+                        boxlist = boxlist[vec]
+                else:
+                    masks = SegmentationMask(masks, (w, h), mode='mask').convert(mask_mode, retvalid=retvalid)
+                boxlist.add_map("masks", masks)
+            return [boxlist]
 
     def extract_roi_features(self, preds, feat):
         batchids = torch.cat([torch.full((len(boxlist), 1), i) for i, boxlist in enumerate(preds)]).cuda()

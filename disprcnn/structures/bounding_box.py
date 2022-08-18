@@ -512,7 +512,10 @@ class BoxList(object):
                 plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c))
             text = "tid " + str(trackids[i])
             label = self.get_field("labels").tolist()[i]
-            text = text + f" label {label if class_names is None else class_names[label]}"
+            if class_names is None:
+                text = text + f" label {label}"
+            else:
+                text = text + " " + class_names[label - 1]
 
             if self.has_field('scores'):
                 text = text + " " + '%.2f' % self.get_field('scores').tolist()[i]

@@ -167,8 +167,10 @@ class DRCNN(nn.Module):
             left_result.add_field('imgid', dps['imgid'][0].item())
             right_result.add_field('imgid', dps['imgid'][0].item())
             if self.dbg:
-                left_result.plot(dps['original_images']['left'][0], show=True)
-                right_result.plot(dps['original_images']['right'][0], show=True)
+                left_result.plot(dps['original_images']['left'][0],
+                                 class_names=self.yolact.cfg.class_names, show=True)
+                right_result.plot(dps['original_images']['right'][0],
+                                  class_names=self.yolact.cfg.class_names, show=True)
             ##############  ↓ Step 2: idispnet  ↓  ##############
             if self.cfg.idispnet_on:
                 assert self.idispnet.training is False
@@ -242,7 +244,7 @@ class DRCNN(nn.Module):
         # print()
         ##############  ↓ Step 4: return  ↓  ##############
         outputs.update({'left': left_result, 'right': right_result})
-        if self.dbg and self.cfg.detector_3d_on:
+        if self.dbg:
             self.vis_final_result(dps, left_result, right_result)
         return outputs, loss_dict
 
@@ -533,14 +535,16 @@ class DRCNN(nn.Module):
             # auto_increase=False,
             enable=self.dbg,
         )
-        dmp = DisparityMapProcessor()
-        disparity_map = dmp(left_result, right_result)
         target = dps['targets']['left'][0]
         calib = target.get_field('calib').calib
-        pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
-        vis3d.add_point_cloud(pts_rect)
-        vis3d.add_boxes(left_result.get_field('box3d').convert('corners').bbox_3d, name='pred')
+        if self.cfg.detector_3d_on:
+            dmp = DisparityMapProcessor()
+            disparity_map = dmp(left_result, right_result)
+            pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
+            vis3d.add_point_cloud(pts_rect)
+            vis3d.add_boxes(left_result.get_field('box3d').convert('corners').bbox_3d, name='pred')
         left_result.plot(dps['original_images']['left'][0], show=False, calib=calib, ignore_2d_when_3d_exists=True,
+                         class_names=self.yolact.cfg.class_names,
                          draw_mask=False)
         outpath = osp.join(vis3d.out_folder, vis3d.sequence_name, f'{vis3d.scene_id:05d}', 'images', 'left_result.png')
         os.makedirs(osp.dirname(outpath))

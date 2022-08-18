@@ -111,18 +111,20 @@ class BaseTrainer:
             if is_main_process():
                 loss_meter.update(reduced_loss.item())
                 lr = self.optimizer.param_groups[0]['lr']
-                self.tb_writer.add_scalar('train/loss', reduced_loss.item(), self.global_steps)
-                self.tb_writer.add_scalar('train/lr', lr, self.global_steps)
-                for k, v in loss_dict.items():
-                    self.tb_writer.add_scalar(f'train/loss/{k}', v.item(), self.global_steps)
-                    self.tb_writer.add_scalar(f'train/loss/smooth_{k}', loss_ams[k].avg, self.global_steps)
+                if self.global_steps % self.cfg.solver.tb_freq == 0:
+                    self.tb_writer.add_scalar('train/loss', reduced_loss.item(), self.global_steps)
+                    self.tb_writer.add_scalar('train/lr', lr, self.global_steps)
+                    for k, v in loss_dict.items():
+                        self.tb_writer.add_scalar(f'train/loss/{k}', v.item(), self.global_steps)
+                        self.tb_writer.add_scalar(f'train/loss/smooth_{k}', loss_ams[k].avg, self.global_steps)
                 bar_vals = {'epoch': epoch, 'phase': 'train', 'loss': loss_meter.avg}
                 for k, v in metrics.items():
                     if k not in metric_ams.keys():
                         metric_ams[k] = AverageMeter()
                     metric_ams[k].update(v.item())
-                    self.tb_writer.add_scalar(f'train/{k}', v.item(), self.global_steps)
-                    self.tb_writer.add_scalar(f'train/smooth_{k}', metric_ams[k].avg, self.global_steps)
+                    if self.global_steps % self.cfg.solver.tb_freq == 0:
+                        self.tb_writer.add_scalar(f'train/{k}', v.item(), self.global_steps)
+                        self.tb_writer.add_scalar(f'train/smooth_{k}', metric_ams[k].avg, self.global_steps)
                     bar_vals[k] = metric_ams[k].avg
                 bar.set_postfix(bar_vals)
             self.global_steps += 1

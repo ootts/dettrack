@@ -1,3 +1,4 @@
+import os
 import random
 
 import numpy as np
@@ -10,6 +11,8 @@ import torch
 import torch.utils.data
 import zarr
 from PIL import Image
+from dl_ext.primitive import safe_zip
+
 from disprcnn.data.datasets.coco import COCOAnnotationTransform
 from dl_ext.vision_ext.datasets.kitti.io import *
 from tqdm import tqdm
@@ -39,11 +42,12 @@ from disprcnn.structures.segmentation_mask import SegmentationMask
 
 
 class KITTIKinsDataset(torch.utils.data.Dataset):
-    CLASSES = (
-        "__background__",
-        "car",
-        'dontcare'
-    )
+    # CLASSES = (
+    #     "__background__",
+    #     "car",
+    #     'pedestrian',
+    #     'dontcare'
+    # )
     NUM_TRAINING = 7481
     NUM_TRAIN = 3712
     NUM_VAL = 3769
@@ -61,6 +65,7 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         self.root = root
         self.split = split
         self.cfg = cfg.dataset.kitti_kins
+        KITTIKinsDataset.CLASSES = self.cfg.classes
         cls = KITTIKinsDataset.CLASSES
         self.remove_ignore = remove_ignore
         self.class_to_ind = dict(zip(cls, range(len(cls))))
@@ -83,20 +88,22 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         # print('getitem', index)
         img = self.get_image(index)
         imgid = int(self.ids[index])
+        # print("imgid=0!!!")
+        # imgid = 0
         height, width, _ = img.shape
         num_crowds = 0
 
         targets = self.get_ground_truth(index)
         if not is_testing_split(self.split):
             labels = targets.get_field('labels')
-            targets = targets[labels == 1]  # remove not cars
+            targets = targets[labels > 0]  # remove not cars
             masks = targets.get_field('kins_masks').get_mask_tensor(squeeze=False).numpy().astype(np.uint8)
             # adapt to yolact style
             tgts = []
             scale = torch.tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
-            for bbox in targets.bbox:
+            for bbox, label in safe_zip(targets.bbox, targets.get_field("labels").tolist()):
                 tgt = bbox / scale
-                tgts.append(tgt.tolist() + [0])
+                tgts.append(tgt.tolist() + [label - 1])
             assert self.transforms is not None
             if len(tgts) > 0:
                 tgts = np.array(tgts)
@@ -191,8 +198,8 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         img_id = self.ids[index]
         return self.infos[int(img_id)]
 
-    def map_class_id_to_class_name(self, class_id):
-        return KITTIObjectDataset.CLASSES[class_id]
+    # def map_class_id_to_class_name(self, class_id):
+    #     return KITTIObjectDataset.CLASSES[class_id]
 
     def read_annotations(self):
         double_view_annotations = {}
@@ -200,8 +207,9 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         if is_testing_split(self.split):
             return {'left': [], 'right': []}
         for view in [2, 3]:
-            annodir = os.path.join(self.root, f"object/training/label_{view}")
-            anno_cache_path = os.path.join(annodir, 'annotations.pkl')
+            # annodir = os.path.join(self.root, f"object/training/label_{view}")
+            # anno_cache_path = os.path.join(annodir, 'annotations.pkl')
+            anno_cache_path = f"data/kitti_kins/annotations_{view}_{'.'.join(KITTIKinsDataset.CLASSES)}.pkl"
             if os.path.exists(anno_cache_path):
                 with open(anno_cache_path, 'rb') as f:
                     annotations = pickle.load(f)
@@ -225,9 +233,12 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
                                                            anno.h, anno.w, anno.l, \
                                                            anno.x, anno.y, anno.z, anno.ry
                         cls_str = cls.lower().strip()
-                        if self.split == 'training':
+                        if not self.is_testing_split():
                             # regard car and van as positive
-                            cls_str = 'car' if cls_str in ['car', 'van'] else '__background__'
+                            if cls_str in ['car', 'van']:
+                                cls_str = 'car'
+                            if cls_str not in KITTIKinsDataset.CLASSES:
+                                cls_str = '__background__'
                         else:  # val
                             # return 'dontcare' in validation phase
                             if cls_str != 'car':
@@ -249,7 +260,9 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
                                         'alphas': torch.tensor(alphas),
                                         'P2': torch.tensor(P2).float(),
                                         })
-                pickle.dump(annotations, open(anno_cache_path, 'wb'))
+                os.makedirs(osp.dirname(anno_cache_path), exist_ok=True)
+                with open(anno_cache_path, 'wb') as f:
+                    pickle.dump(annotations, f)
             if view == 2:
                 double_view_annotations['left'] = annotations
             else:

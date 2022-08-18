@@ -22,11 +22,11 @@ from disprcnn.utils.stereo_utils import align_left_right_targets
 
 
 class KITTIObjectDataset(torch.utils.data.Dataset):
-    CLASSES = (
-        "__background__",
-        "car",
-        'dontcare'
-    )
+    # CLASSES = (
+    #     "__background__",
+    #     "car",
+    #     'dontcare'
+    # )
     NUM_TRAINING = 7481
     NUM_TRAIN = 3712
     NUM_VAL = 3769
@@ -36,6 +36,7 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         self.root = root
         self.split = split
         self.cfg = cfg.dataset.kitti_object
+        KITTIObjectDataset.CLASSES = self.cfg.classes
         cls = KITTIObjectDataset.CLASSES
         self.remove_ignore = self.cfg.remove_ignore
         self.class_to_ind = dict(zip(cls, range(len(cls))))
@@ -97,7 +98,7 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         if not is_testing_split(self.split):
             for view in ['left', 'right']:
                 labels = targets[view].get_field('labels')
-                targets[view] = targets[view][labels == 1]  # remove not cars
+                targets[view] = targets[view][labels > 0]  # remove not cars
             l, r = align_left_right_targets(targets['left'], targets['right'], thresh=0.15)
             if self.split == 'val' and self.remove_ignore:
                 l, r = self.remove_ignore_cars(l, r)
@@ -202,8 +203,9 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         if is_testing_split(self.split):
             return {'left': [], 'right': []}
         for view in [2, 3]:
-            annodir = os.path.join(self.root, f"object/training/label_{view}")
-            anno_cache_path = os.path.join(annodir, 'annotations.pkl')
+            # annodir = os.path.join(self.root, f"object/training/label_{view}")
+            anno_cache_path = f"data/kitti_object/annotations_{view}_{'.'.join(KITTIObjectDataset.CLASSES)}.pkl"
+            os.makedirs(osp.dirname(anno_cache_path), exist_ok=True)
             if os.path.exists(anno_cache_path):
                 with open(anno_cache_path, 'rb') as f:
                     annotations = pickle.load(f)
@@ -229,7 +231,10 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
                         cls_str = cls.lower().strip()
                         if self.split == 'training':
                             # regard car and van as positive
-                            cls_str = 'car' if cls_str in ['car', 'van'] else '__background__'
+                            if cls_str in ['car', 'van']:
+                                cls_str = 'car'
+                            if cls_str not in KITTIKinsDataset.CLASSES:
+                                cls_str = '__background__'
                         else:  # val
                             # return 'dontcare' in validation phase
                             if cls_str != 'car':
@@ -251,7 +256,8 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
                                         'alphas': torch.tensor(alphas),
                                         'P2': torch.tensor(P2).float(),
                                         })
-                pickle.dump(annotations, open(anno_cache_path, 'wb'))
+                with open(anno_cache_path, 'wb') as f:
+                    pickle.dump(annotations, f)
             if view == 2:
                 double_view_annotations['left'] = annotations
             else:

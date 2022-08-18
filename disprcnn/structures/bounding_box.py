@@ -491,7 +491,8 @@ class BoxList(object):
         s += "mode={})".format(self.mode)
         return s
 
-    def plot(self, img=None, show=False, calib=None, draw_mask=True, ignore_2d_when_3d_exists=False, **kwargs):
+    def plot(self, img=None, show=False, calib=None, draw_mask=True, ignore_2d_when_3d_exists=False, class_names=None,
+             **kwargs):
         import matplotlib.pyplot as plt
         from matplotlib import colors as mcolors
         plt.close("all")
@@ -509,7 +510,10 @@ class BoxList(object):
             c = colors[trackids[i] % len(colors)]
             if not (ignore_2d_when_3d_exists and self.has_field("box3d")):
                 plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c))
-            text = str(trackids[i])
+            text = "tid " + str(trackids[i])
+            label = self.get_field("labels").tolist()[i]
+            text = text + f" label {label if class_names is None else class_names[label]}"
+
             if self.has_field('scores'):
                 text = text + " " + '%.2f' % self.get_field('scores').tolist()[i]
                 plt.text(x, y, text, color=c, **kwargs)

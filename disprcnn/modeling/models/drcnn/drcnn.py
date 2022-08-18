@@ -242,7 +242,7 @@ class DRCNN(nn.Module):
         # print()
         ##############  ↓ Step 4: return  ↓  ##############
         outputs.update({'left': left_result, 'right': right_result})
-        if self.dbg:
+        if self.dbg and self.cfg.detector_3d_on:
             self.vis_final_result(dps, left_result, right_result)
         return outputs, loss_dict
 
@@ -280,17 +280,22 @@ class DRCNN(nn.Module):
         # rp = maskrcnn_to_disprcnn(rp)
         W, H = lp.size
         lboxes = lp.bbox.round().long().tolist()
+        llabels = lp.get_field('labels').long().tolist()
         rboxes = rp.bbox.round().long().tolist()
+        # rlabels = rp.get_field('labels').long().tolist()
         ssims = torch.zeros((len(lboxes), len(rboxes)))
         for i in range(len(lboxes)):
             x1, y1, x2, y2 = lboxes[i]
+            ssim_coef = self.cfg.ssim_coefs[llabels[i] - 1]
+            ssim_intercept = self.cfg.ssim_intercepts[llabels[i] - 1]
+            ssim_std = self.cfg.ssim_stds[llabels[i] - 1]
             for j in range(len(rboxes)):
                 x1p, y1p, x2p, y2p = rboxes[j]
                 # adaptive thresh
                 hmean = (y2 - y1 + y2p - y1p) / 2
-                center_disp_expectation = hmean * self.cfg.ssim_coef + self.cfg.ssim_intercept
+                center_disp_expectation = hmean * ssim_coef + ssim_intercept
                 cd = (x1 + x2 - x1p - x2p) / 2
-                if abs(cd - center_disp_expectation) < 3 * self.cfg.ssim_std:
+                if abs(cd - center_disp_expectation) < 3 * ssim_std:
                     w = max(x2 - x1, x2p - x1p)
                     h = max(y2 - y1, y2p - y1p)
                     w = min(min(w, W - x1, ), W - x1p)

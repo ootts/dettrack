@@ -229,15 +229,15 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
                                                            anno.h, anno.w, anno.l, \
                                                            anno.x, anno.y, anno.z, anno.ry
                         cls_str = cls.lower().strip()
-                        if self.split == 'training':
+                        if not self.is_testing_split():
                             # regard car and van as positive
                             if cls_str in ['car', 'van']:
                                 cls_str = 'car'
-                            if cls_str not in KITTIKinsDataset.CLASSES:
+                            if cls_str not in KITTIObjectDataset.CLASSES:
                                 cls_str = '__background__'
                         else:  # val
                             # return 'dontcare' in validation phase
-                            if cls_str != 'car':
+                            if cls_str not in KITTIObjectDataset.CLASSES:
                                 cls_str = '__background__'
                         cls = self.class_to_ind[cls_str]
                         label[ix] = cls

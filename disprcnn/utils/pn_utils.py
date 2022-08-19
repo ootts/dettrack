@@ -34,7 +34,6 @@ def torch_to_np_dtype(ttype):
         torch.int64: np.dtype(np.int64),
         torch.long: np.dtype(np.int64),
         torch.uint8: np.dtype(np.uint8),
-        torch.byte: np.dtype(np.uint8),
     }
     return type_map[ttype]
 

@@ -264,7 +264,7 @@ class DRCNN(nn.Module):
         boxlist.add_field("labels", labels + 1)
         boxlist.add_field("scores", scores)
         if add_mask:
-            keep = masks.sum(1).sum(1) > 20
+            keep = masks.sum(1).sum(1) > 400
             boxlist = boxlist[keep]
             masks = masks[keep]
             if retvalid:
@@ -386,7 +386,7 @@ class DRCNN(nn.Module):
             target = dps['targets']['left'][0]
             calib = target.get_field('calib').calib
             pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
-            vis3d.add_point_cloud(pts_rect)
+            vis3d.add_point_cloud(pts_rect[pts_rect[:, 2] < 80])
             vis3d.add_image(dps['original_images']['left'][0].cpu().numpy())
             vis3d.add_box3dlist(target.get_field('box3d'))
             print()

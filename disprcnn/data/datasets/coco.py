@@ -163,14 +163,19 @@ class COCODetection(data.Dataset):
             print('Warning: Augmentation output an example with no ground truth. Resampling...')
             return self.__getitem__(random.randint(0, len(self.ids) - 1))
         # boxlist = BoxList(target[:, 0:4], (1, 1))
-
+        boxlist = BoxList(target[:, :4], (1, 1))
+        boxlist.add_field("labels", torch.tensor(target[:, -1]).long())
+        boxlist.add_field("masks", torch.from_numpy(masks).long())
         dps = {
             'image': torch.from_numpy(img).permute(2, 0, 1),
-            'target': target,
-            'masks': masks,
+            'target': boxlist,
+            # 'masks': masks,
             'height': height,
             'width': width,
-            'num_crowds': num_crowds
+            'num_crowds': num_crowds,
+            'imgid': img_id,
+            'index': index
+
         }
         return dps
 

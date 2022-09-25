@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import torch
 
 from disprcnn.modeling.models.yolact.backbone import construct_backbone
 # from data.config import cfg, mask_type
@@ -264,6 +265,9 @@ class YolactWrapper(nn.Module):
             # o['detection']['index'] = idx
             losses = {}
         else:
+            # if isinstance(dps['target'][0], torch.Tensor):
+            #     targets = dps['target']
+            # else:
             targets = [torch.cat([boxlist.bbox, boxlist.get_field('labels').reshape(-1, 1)
                                   ], dim=1) for boxlist in dps['target']]
             masks = [boxlist.get_field('masks').float() for boxlist in dps['target']]
@@ -296,6 +300,8 @@ class YolactWrapper(nn.Module):
         classes, scores, boxes = [x[idx].cpu().numpy() for x in t[:3]]
 
         num_dets_to_consider = min(self.cfg.top_k, classes.shape[0])
+        if num_dets_to_consider == 0:
+            return (img_gpu * 255).byte().cpu().numpy()
         for j in range(num_dets_to_consider):
             if scores[j] < self.cfg.score_threshold:
                 num_dets_to_consider = j
@@ -323,7 +329,7 @@ class YolactWrapper(nn.Module):
         # I wish I had access to OpenGL or Vulkan but alas, I guess Pytorch tensor operations will have to suffice
         # if self.cfg.display_masks and self.cfg.eval_mask_branch and num_dets_to_consider > 0:
         # After this, mask is of size [num_dets, h, w, 1]
-        masks = masks[:num_dets_to_consider, :, :, None]
+        masks = masks[:num_dets_to_consider][..., None]
 
         # Prepare the RGB images for each mask given their color (size [num_dets, h, w, 1])
         colors = torch.cat(
@@ -349,8 +355,8 @@ class YolactWrapper(nn.Module):
         # Note, make sure this is a uint8 tensor or opencv will not anti alias text for whatever reason
         img_numpy = (img_gpu * 255).byte().cpu().numpy()
 
-        if num_dets_to_consider == 0:
-            return img_numpy
+        # if num_dets_to_consider == 0:
+        #     return img_numpy
 
         for j in reversed(range(num_dets_to_consider)):
             x1, y1, x2, y2 = boxes[j, :]

@@ -277,6 +277,11 @@ _C.model.drcnn.retvalid = True
 _C.model.drcnn.nvis = 10
 
 _C.dataset = CN()
+
+_C.dataset.coco = CN()
+_C.dataset.use_gray = False
+# _C.dataset.use_gray.classes = ()
+
 _C.dataset.kitti_kins = CN()
 _C.dataset.kitti_kins.use_gray = False
 _C.dataset.kitti_kins.classes = ("__background__", "car", "dontcare")
@@ -418,6 +423,7 @@ _C.test.do_evaluation = True
 _C.test.do_visualization = False
 _C.test.eval_all = False
 _C.test.eval_all_min = 0
+_C.test.eval_all_attr = "solver.load_model"
 _C.test.save_predictions = False
 _C.test.training_mode = False
 _C.test.ckpt_dir = ''

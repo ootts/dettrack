@@ -3,9 +3,10 @@ model:
 datasets:
   train: ("coco2017_train",)
   test: "coco2017_val"
-#dataset:
-#  coco:
-#    pass??
+dataset:
+  coco:
+    use_gray: True
+
 solver:
   trainer: base
   batch_size: 8

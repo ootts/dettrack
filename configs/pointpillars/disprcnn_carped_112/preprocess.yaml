@@ -1,0 +1,6 @@
+model:
+  pointpillars:
+    preprocess:
+      save_dir: "data/disprcnn_carped_112/kitti_second"
+      velodyne_template: 'data/disprcnn_carped_112/pseudo_lidar/%s/velodyne/%06d.bin'
+      velodyne_reduced_dir: "data/disprcnn_carped_112/kitti_second/training/velodyne_reduced/"

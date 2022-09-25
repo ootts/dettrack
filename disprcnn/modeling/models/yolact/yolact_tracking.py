@@ -107,8 +107,8 @@ class TrackHead(nn.Module):
         n = len(match_score)
         x_n = [s.size(0) for s in match_score]
         # ids = torch.split(ids, x_n, dim=0)
-        loss_match = 0.
-        match_acc = 0.
+        loss_match = 0.0
+        match_acc = 0.0
         n_total = 0
         batch_size = len(ids)
         for score, cur_ids, cur_weights in zip(match_score, ids, id_weights):
@@ -120,6 +120,10 @@ class TrackHead(nn.Module):
                 score, cur_ids, cur_weights, reduce=reduce)
             match_acc += accuracy(torch.index_select(score, 0, valid_idx),
                                   torch.index_select(cur_ids, 0, valid_idx)) * n_valid
+        if isinstance(loss_match, float):
+            loss_match = torch.tensor([0.0], requires_grad=True)
+        if isinstance(match_acc, float):
+            match_acc = torch.tensor([0.0], requires_grad=True)
         losses['loss_match'] = loss_match / n
         if n_total > 0:
             match_acc = match_acc / n_total
@@ -165,6 +169,10 @@ class YolactTracking(nn.Module):
         self.evaltime('roi align')
         ##############  ↓ Step : forward track head  ↓  ##############
         ref_x = roi_features0
+        if len(ref_x) == 0:
+            output = {'metrics': {'acc': torch.tensor([0.0], requires_grad=True)}}
+            loss_dict = {'loss_match': torch.tensor([0.0 ], requires_grad=True)}            
+            return output, loss_dict
         ref_x_n = [len(a) for a in preds0]
         x = roi_features1
         x_n = [len(a) for a in preds1]
@@ -174,6 +182,7 @@ class YolactTracking(nn.Module):
         ids, id_weights = self.prepare_targets(preds0, preds1, dps)
         self.evaltime('prepare targets')
         loss_match, acc = self.track_head.loss(match_score, ids, id_weights)
+        
         output = {'metrics': {'acc': acc}}
         loss_dict = {'loss_match': loss_match}
         self.evaltime('loss')

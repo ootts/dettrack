@@ -87,7 +87,9 @@ class BaseTrainer:
             batch = to_cuda(batch)
             batch['global_step'] = self.global_steps
             output, loss_dict = self.model(batch)
+            
             loss = sum(v for k, v in loss_dict.items())
+            # print("DEBUG: LOSS= ", loss)
             loss.backward()
             if self.cfg.solver.do_grad_clip:
                 if self.cfg.solver.grad_clip_type == 'norm':

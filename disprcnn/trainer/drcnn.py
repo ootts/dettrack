@@ -9,6 +9,7 @@ import time
 import loguru
 from dl_ext.pytorch_ext import OneCycleScheduler, reduce_loss
 from termcolor import colored
+from torch import nn
 from torch.nn.utils import clip_grad_norm_, clip_grad_value_
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -19,6 +20,7 @@ from disprcnn.trainer.base import BaseTrainer
 from disprcnn.trainer.utils import format_time, to_cpu, to_cuda
 from disprcnn.utils.averagemeter import AverageMeter
 from disprcnn.utils.comm import synchronize, is_main_process, get_rank, get_world_size, all_gather
+from disprcnn.modeling.build import build_model
 
 
 class DRCNNTrainer(BaseTrainer):
@@ -187,3 +189,7 @@ class DRCNNTrainer(BaseTrainer):
             loguru.logger.info(s)
         if self.scheduler is not None and not isinstance(self.scheduler, (OneCycleScheduler, WarmupMultiStepLR)):
             self.scheduler.step()
+
+    def rebuild_model(self):
+        self.model: nn.Module = build_model(self.cfg).to(torch.device(self.cfg.model.device))
+        self.resume()

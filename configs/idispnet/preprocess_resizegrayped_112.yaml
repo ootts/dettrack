@@ -1,0 +1,14 @@
+model:
+  idispnet:
+    preprocess:
+      output_dir: 'data/vob_roi_ra_gray_ped_112'
+      prediction_template: 'models/drcnn/kitti_object/resnet50resizegray_ped/inference/kittiobj_%s/predictions.pth'
+      size: 112
+datasets:
+  train: ("kittiobj_train",)
+  test: "kittiobj_val"
+dataset:
+  kitti_object:
+    filter_empty: False
+    use_gray: True
+    classes: ("__background__", "pedestrian")

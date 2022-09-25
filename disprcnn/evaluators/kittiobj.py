@@ -10,7 +10,9 @@ import os
 @EVALUATORS.register("kittiobj")
 def build(cfg):
     def kittiobjeval(predictions, trainer):
-        class_names = ["__background__", "Car", "Pedestrian"]
+        class_names = list(trainer.cfg.dataset.kitti_object.classes)
+        
+        class_names = [s.capitalize() for s in class_names]
         output_folder = os.path.join(cfg.output_dir, "evaluate", 'txt')
         os.makedirs(output_folder, exist_ok=True)
         for i, pred in enumerate(tqdm.tqdm(predictions)):
@@ -38,6 +40,7 @@ def build(cfg):
                 f.writelines('\n'.join(preds_per_img))
         final_msg = ''
         iou_thresh = (0.7, 0.5)
+        res = {}
         for iou_thresh in iou_thresh:
             final_msg += '%.1f\n' % iou_thresh
             from termcolor import colored
@@ -74,6 +77,8 @@ def build(cfg):
                             [list(map(float, line.split())) for line in f.read().splitlines()]) * 100
                     ap = lines[:, ::4].mean(1).tolist()
                     final_msg += 'AP 3d %.2f %.2f %.2f\n' % (ap[0], ap[1], ap[2])
+                res.update({label+str(iou_thresh)+"_AP_easy":ap[0], label+str(iou_thresh)+"_AP_mod":ap[1], label+str(iou_thresh)+"_AP_hard":ap[2]})
         loguru.logger.info(final_msg)
+        return res
 
     return kittiobjeval

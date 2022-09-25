@@ -39,7 +39,7 @@ def detection_collate(batch):
     indexs = torch.tensor(indexs)
     dps = {
         'image': imgs,
-        'targets': targets,
+        'target': targets,
         'masks': masks,
         'num_crowds': num_crowds,
         'height': heights,

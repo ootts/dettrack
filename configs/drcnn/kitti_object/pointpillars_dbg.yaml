@@ -2,32 +2,32 @@ model:
   meta_architecture: "DRCNN"
   drcnn:
     yolact_on: True
-    pretrained_yolact: "models/yolact/kitti/resnet50resizegray_carped/model_iteration_145000.pth"
-    ssim_coefs: [ 0.18742550637410094,0.27261221916974204 ]
-    ssim_intercepts: [ 4.41360665450609 , 1.707562061026895 ]
-    ssim_stds: [ 23.81503735 , 8.95778275 ]
+    pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_217500.pth"
+    ssim_coef: 0.18742550637410094
+    ssim_intercept: 4.41360665450609
+    ssim_std: 23.81503735
     mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
     idispnet_on: True
+    detector_3d_on: True
+    detector_3d:
+      use_lidar: True
+      aug_on: True
   yolact:
-    num_classes: 3
-    class_names: [ 'car','pedestrian' ]
+    num_classes: 2
+    class_names: [ 'car' ]
     pretrained_backbone: ""
   idispnet:
-    pretrained_model: "models/idispnet/kitti_resizegraycarped_112/bestmodel.pth"
-    maxdisp: 24
-    mindisp: -24
-    input_size: 112
+    pretrained_model: "models/idispnet/kitti_resizegray/bestmodel.pth"
+  pointpillars:
+    num_point_features: 3
 datasets:
   train: ("kittiobj_train",)
-  #  test: "kittiobj_val"
-  #  test: "kittiobj_test"
-  #  test: "kittikins_valmini"
-  #  test: "kittitracking_valmini"
-  test: "kittiobj_train"
-#  test: "kittiobj_valmini"
+  test: "kittiobj_val"
+  # test: "kittiobj_val"
+  # test: "kittiobj_valmini"
 solver:
   trainer: drcnn
-  batch_size: 8
+  batch_size: 1
   max_lr: 0.001
   num_epochs: 1500
   optimizer: SGD
@@ -64,7 +64,9 @@ input:
 dataset:
   kitti_object:
     use_gray: True
-    classes: ("__background__", "car", "pedestrian")
+    offline_2d_predictions_path: 'models/idispnet/kittiobj/kittiobj_resizegray/inference/kittiobj_%s/predictions.pth'
+    load_lidar: True
+    filter_empty: True
 test:
   do_visualization: False
   #  visualizer: drcnn # todo: implement

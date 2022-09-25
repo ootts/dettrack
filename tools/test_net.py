@@ -1,19 +1,16 @@
-import os.path as osp
-import argparse
-import os
-
 import csv
+import os
+import os.path as osp
 import sys
 
 import torch
-from disprcnn.config import cfg
+import torch.multiprocessing
 
+from disprcnn.config import cfg
 from disprcnn.engine.defaults import default_argument_parser
 from disprcnn.evaluators import build_evaluators
 from disprcnn.trainer.build import build_trainer
 from disprcnn.utils.comm import synchronize, get_rank, get_world_size
-import torch.multiprocessing
-
 # torch.multiprocessing.set_sharing_strategy('file_system')
 from disprcnn.utils.logger import setup_logger
 from disprcnn.utils.os_utils import isckpt
@@ -46,6 +43,18 @@ def eval_one_ckpt(trainer):
             visualizer(preds, trainer)
 
 
+def setcfg(cfg, attr: str, value):
+    '''
+    cfg.attr = value
+    '''
+    cfg.defrost()
+    nodes = attr.split('.')
+    lastlevel = cfg
+    for node in nodes[:-1]:
+        lastlevel = getattr(lastlevel, node)
+    setattr(lastlevel, nodes[-1], value)
+
+
 def eval_all_ckpts(trainer):
     if cfg.test.do_evaluation:
         evaluators = build_evaluators(cfg)
@@ -59,32 +68,38 @@ def eval_all_ckpts(trainer):
     csv_results = {'fname': []}
     for fname in sorted(os.listdir(ckpt_dir)):
         if isckpt(fname) and int(fname[-10:-4]) > cfg.test.eval_all_min:
+
             cfg.defrost()
-            cfg.solver.load_model = osp.join(ckpt_dir, fname)
+            # setattr(cfg, cfg.test.eval_all_attr, osp.join(ckpt_dir, fname))
+            setcfg(cfg, cfg.test.eval_all_attr, osp.join(ckpt_dir, fname))
+            # cfg.solver.load_model =
             cfg.solver.load = ''
-            # cfg.solver.load = fname[:-4]
             cfg.freeze()
-            trainer.resume()
+            print("CKPT= ", cfg.model.drcnn.pretrained_yolact)
+
+            trainer.rebuild_model()
             preds = get_preds(trainer)
-            all_metrics = {}
-            if cfg.test.do_evaluation:
-                for evaluator in evaluators:
-                    eval_res = evaluator(preds, trainer.valid_dl.dataset)
-                    all_metrics.update(eval_res)
-            # save results
-            csv_results['fname'].append(fname)
-            for k, v in all_metrics.items():
-                tb_writer.add_scalar(f'eval/{k.replace("@", "_")}', v, int(fname[-10:-4]))
-                if k not in csv_results: csv_results[k] = []
-                csv_results[k].append(v)
-            if cfg.test.do_visualization:
-                visualizer(preds, trainer.valid_dl.dataset)
+            if get_rank() == 0:
+                all_metrics = {}
+                if cfg.test.do_evaluation:
+                    for evaluator in evaluators:
+                        eval_res = evaluator(preds, trainer)
+                        all_metrics.update(eval_res)
+                # save results
+                csv_results['fname'].append(fname)
+                for k, v in all_metrics.items():
+                    tb_writer.add_scalar(f'eval/{k.replace("@", "_")}', v, int(fname[-10:-4]))
+                    if k not in csv_results: csv_results[k] = []
+                    csv_results[k].append(v)
+                if cfg.test.do_visualization:
+                    visualizer(preds, trainer)
     # write csv file
-    csv_out_path = osp.join(trainer.output_dir, 'inference', cfg.datasets.test, 'eval_all_ckpt.csv')
-    os.makedirs(osp.dirname(csv_out_path), exist_ok=True)
-    with open(csv_out_path, 'w', newline='') as csvfile:
-        fieldnames = list(csv_results.keys())
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    if get_rank() == 0:
+        csv_out_path = osp.join(trainer.output_dir, 'inference', cfg.datasets.test, 'eval_all_ckpt.csv')
+        os.makedirs(osp.dirname(csv_out_path), exist_ok=True)
+        with open(csv_out_path, 'w', newline='') as csvfile:
+            fieldnames = list(csv_results.keys())
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
         for i in range(len(csv_results['fname'])):

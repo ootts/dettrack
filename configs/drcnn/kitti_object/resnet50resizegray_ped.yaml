@@ -2,28 +2,17 @@ model:
   meta_architecture: "DRCNN"
   drcnn:
     yolact_on: True
-    pretrained_yolact: "models/yolact/kitti/resnet50resizegray_carped/model_iteration_145000.pth"
-    ssim_coefs: [ 0.18742550637410094,0.27261221916974204 ]
-    ssim_intercepts: [ 4.41360665450609 , 1.707562061026895 ]
-    ssim_stds: [ 23.81503735 , 8.95778275 ]
-    mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
-    idispnet_on: True
+    pretrained_yolact: "models/yolact/kitti/resnet50resizegray_ped/model_iteration_155000.pth"
+    ssim_coefs: [ 0.27261221916974204 ]
+    ssim_intercepts: [ 1.707562061026895 ]
+    ssim_stds: [ 8.95778275 ]
   yolact:
-    num_classes: 3
-    class_names: [ 'car','pedestrian' ]
-    pretrained_backbone: ""
-  idispnet:
-    pretrained_model: "models/idispnet/kitti_resizegraycarped_112/bestmodel.pth"
-    maxdisp: 24
-    mindisp: -24
-    input_size: 112
+    num_classes: 2
+    class_names: [ 'pedestrian' ]
 datasets:
   train: ("kittiobj_train",)
-  #  test: "kittiobj_val"
-  #  test: "kittiobj_test"
-  #  test: "kittikins_valmini"
-  #  test: "kittitracking_valmini"
   test: "kittiobj_train"
+  # test: "kittiobj_val"
 #  test: "kittiobj_valmini"
 solver:
   trainer: drcnn
@@ -49,6 +38,7 @@ input:
     - name: ConvertFromInts
     - name: Resize
       max_size: 546
+      # max_size: 720
       preserve_aspect_ratio: True
       discard_box_width: 0.007272727272727273
       discard_box_height: 0.007272727272727273
@@ -61,16 +51,24 @@ input:
       to_float: False
       in_channel_order: 'BGR'
       channel_order: 'RGB'
+
 dataset:
   kitti_object:
     use_gray: True
-    classes: ("__background__", "car", "pedestrian")
+    classes: ("__background__", "pedestrian")
+
 test:
-  do_visualization: False
+  do_visualization: True
   #  visualizer: drcnn # todo: implement
-  evaluators: [ ]
+  evaluators: [ "kittiobj" ]
+  visualizer: "drcnn"
   batch_size: 1
   save_predictions: True
+  eval_all_attr: "model.drcnn.pretrained_yolact"
+  ckpt_dir: "models/yolact/kitti/resnet50resizegray_ped"
+  # force_recompute: False
+  eval_all: False
+  eval_all_min: 70000
 
 dataloader:
   collator: ExtendedBatchCollator

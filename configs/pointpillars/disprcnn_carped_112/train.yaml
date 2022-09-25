@@ -1,0 +1,52 @@
+  ??
+  model:
+    meta_architecture: "PointPillars"
+  datasets:
+    train: ("kittivelodyne_train",)
+    test: "kittivelodyne_val"
+  solver:
+    trainer: pointpillars
+    batch_size: 2
+    max_lr: 0.002
+    num_epochs: 1500
+    optimizer: SGD
+    scheduler: WarmupMultiStepLR
+    warmup_iters: 500
+    steps: [ 280000, 600000, 700000, 750000 ]
+    bias_lr_factor: 1
+    weight_decay: 0.0001
+    weight_decay_bias: 0.0001
+    save_every: True
+    save_mode: epoch
+    save_freq: 1
+    dist:
+      sampler:
+        shuffle: True
+  input:
+    shuffle: True
+  dataset:
+    kitti_velodyne:
+      info_path: "data/disprcnn_112/kitti_second/kitti_infos_%s.pkl"
+      root_path: 'data/disprcnn_112/kitti_second'
+      db_sampler:
+        database_info_path: "data/disprcnn_112/kitti_second/kitti_dbinfos_train.pkl"
+        database_prep_steps:
+          - name: "filter_by_min_num_points"
+            key: "Car"
+            value: 5
+          - name: filter_by_difficulty
+            removed_difficulties: [ -1 ]
+        sample_groups:
+          - key: "Car"
+            value: 15
+  test:
+    do_visualization: False # todo
+    visualizer: ""
+    evaluators: [ "kittiobj" ]
+    batch_size: 1
+    save_predictions: True
+  #  force_recompute: False
+
+  dataloader:
+    num_workers: 2
+    collator: SecondBatchCollator

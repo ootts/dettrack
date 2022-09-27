@@ -7,10 +7,11 @@ The system is based on [Disp R-CNN](https://arxiv.org/pdf/2004.03572.pdf) with t
 
 ## Requirements
 
-- Ubuntu 16.04+
+- Ubuntu 18.04+
 - Python 3.7
 - Nvidia GPU
 - PyTorch 1.10.0
+- cudatoolkit==10.2
 - boost<=1.71 (recommended)
 
 ## Install

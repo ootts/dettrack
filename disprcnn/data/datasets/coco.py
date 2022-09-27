@@ -67,11 +67,16 @@ class COCODetection(data.Dataset):
                  has_gt=True,
                  ds_len=-1):
         # Do this here because we have too many things named COCO
+        self.cfg = cfg.dataset.coco
         from pycocotools.coco import COCO
 
         image_dir = osp.join(data_dir, split + "2017")
         self.root = image_dir
-        info_file = osp.join(data_dir, f"annotations/instances_{split}2017.json")
+        if self.cfg.class_only != "":
+            class_only = "_" + self.cfg.class_only
+        else:
+            class_only = ""
+        info_file = osp.join(data_dir, f"annotations/instances{class_only}_{split}2017.json")
         self.coco = COCO(info_file)
 
         self.ids = list(self.coco.imgToAnns.keys())
@@ -123,6 +128,11 @@ class COCODetection(data.Dataset):
 
         img = cv2.imread(path)
         height, width, _ = img.shape
+        if self.cfg.use_gray:
+            Lgray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            img[..., 0] = Lgray
+            img[..., 1] = Lgray
+            img[..., 2] = Lgray
 
         if len(target) > 0:
             # Pool all the masks for this image into one [num_objects,height,width] matrix
@@ -186,10 +196,13 @@ def main():
     from disprcnn.data import make_data_loader
     parser = default_argument_parser()
     args = parser.parse_args()
-    args.config_file = 'configs/yolact/coco/resnet50.yaml'
+    args.config_file = 'configs/yolact/coco/resnet50_ped_gray.yaml'
     cfg = setup(args)
     ds = make_data_loader(cfg).dataset
-    d = ds[4]
+    d = ds[0]
+    boxlist: BoxList = d['target']
+    boxlist.plot(d['image'].permute(1, 2, 0), show=True, draw_mask=True)
+    print()
 
 
 if __name__ == '__main__':

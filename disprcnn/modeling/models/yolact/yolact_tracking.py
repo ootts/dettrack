@@ -171,7 +171,7 @@ class YolactTracking(nn.Module):
         ref_x = roi_features0
         if len(ref_x) == 0:
             output = {'metrics': {'acc': torch.tensor([0.0], requires_grad=True)}}
-            loss_dict = {'loss_match': torch.tensor([0.0 ], requires_grad=True)}            
+            loss_dict = {'loss_match': torch.tensor([0.0], requires_grad=True)}
             return output, loss_dict
         ref_x_n = [len(a) for a in preds0]
         x = roi_features1
@@ -182,7 +182,7 @@ class YolactTracking(nn.Module):
         ids, id_weights = self.prepare_targets(preds0, preds1, dps)
         self.evaltime('prepare targets')
         loss_match, acc = self.track_head.loss(match_score, ids, id_weights)
-        
+
         output = {'metrics': {'acc': acc}}
         loss_dict = {'loss_match': loss_match}
         self.evaltime('loss')

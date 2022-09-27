@@ -87,9 +87,8 @@ class BaseTrainer:
             batch = to_cuda(batch)
             batch['global_step'] = self.global_steps
             output, loss_dict = self.model(batch)
-            
+
             loss = sum(v for k, v in loss_dict.items())
-            # print("DEBUG: LOSS= ", loss)
             loss.backward()
             if self.cfg.solver.do_grad_clip:
                 if self.cfg.solver.grad_clip_type == 'norm':
@@ -440,9 +439,9 @@ class BaseTrainer:
         d = torch.load(name, 'cpu')
         net_sd = d['model']
         if hasattr(self.model, 'module'):
-            self.model.module.load_state_dict(net_sd, strict=False)
+            self.model.module.load_state_dict(net_sd, strict=self.cfg.solver.strict)
         else:
-            self.model.load_state_dict(net_sd, strict=False)
+            self.model.load_state_dict(net_sd, strict=self.cfg.solver.strict)
         self.optimizer.load_state_dict(d['optimizer'])
         self.scheduler.load_state_dict(d['scheduler'])
         self.begin_epoch = d['epoch']
@@ -455,9 +454,9 @@ class BaseTrainer:
         if 'model' in d and 'optimizer' in d:
             d = d['model']
         if hasattr(self.model, 'module'):
-            self.model.module.load_state_dict(d, strict=False)
+            self.model.module.load_state_dict(d, strict=self.cfg.solver.strict)
         else:
-            self.model.load_state_dict(d, strict=False)
+            self.model.load_state_dict(d, strict=self.cfg.solver.strict)
 
     @property
     def tb_writer(self):

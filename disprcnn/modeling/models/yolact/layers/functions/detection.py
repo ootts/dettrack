@@ -28,7 +28,7 @@ class Detect(object):
         self.conf_thresh = conf_thresh
 
         self.use_cross_class_nms = False
-        self.use_fast_nms = False
+        self.use_fast_nms = True
 
     def __call__(self, predictions, net):
         """
@@ -171,8 +171,8 @@ class Detect(object):
 
         # Only keep the top cfg.max_num_detections highest scores across all classes
         scores, idx = scores.sort(0, descending=True)
-        idx = idx[:cfg.max_num_detections]
-        scores = scores[:cfg.max_num_detections]
+        idx = idx[:self.cfg.max_num_detections]
+        scores = scores[:self.cfg.max_num_detections]
 
         classes = classes[idx]
         boxes = boxes[idx]

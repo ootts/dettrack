@@ -11,7 +11,7 @@ import tqdm
 from PIL import Image
 from tqdm import trange
 
-from disprcnn.modeling.models.yolact.layers.output_utils import undo_image_transformation, postprocess
+from disprcnn.modeling.models.yolact.layers.output_utils import undo_image_transformation
 
 from disprcnn.registry import VISUALIZERS
 from disprcnn.utils.comm import get_rank

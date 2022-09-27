@@ -4,9 +4,9 @@ model:
     yolact_on: False
     yolact_tracking_on: True
     pretrained_yolact_tracking: "models/yolact_tracking/kitti/resnet50b10resizegray/model_epoch_000119.pth"
-    ssim_coef: 0.18742550637410094
-    ssim_intercept: 4.41360665450609
-    ssim_std: 23.81503735
+    ssim_coefs: [ 0.18742550637410094 ]
+    ssim_intercepts: [ 4.41360665450609 ]
+    ssim_stds: [ 23.81503735 ]
     mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
     idispnet_on: True
     detector_3d_on: True

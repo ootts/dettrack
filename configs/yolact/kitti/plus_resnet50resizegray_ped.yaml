@@ -1,17 +1,37 @@
 model:
   meta_architecture: "Yolact"
+  yolact:
+    backbone:
+      args: ([3, 4, 6, 3], [0, 4, 6, 3])
+      selected_layers: [ 1,2,3 ]
+      pred_aspect_ratios: [ [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ] ]
+      pred_scales: [ [ 24.0, 30.238105197476955, 38.097625247236785 ],
+                     [ 48.0, 60.47621039495391, 76.19525049447357 ],
+                     [ 96.0, 120.95242078990782, 152.39050098894714 ],
+                     [ 192.0, 241.90484157981564, 304.7810019778943 ],
+                     [ 384.0, 483.8096831596313, 609.5620039557886 ] ]
+      use_pixel_scales: True
+      preapply_sqrt: False
+      use_square_anchors: False
+    use_maskiou: True
+    #    maskiou_net: [ (8, 3, { 'stride': 2 }), (16, 3, { 'stride': 2 }), (32, 3, { 'stride': 2 }), (64, 3, { 'stride': 2 }), (128, 3, { 'stride': 2 }) ],
+    maskiou_alpha: 25
+    rescore_bbox: False
+    rescore_mask: True
+
+    discard_mask_area: 25
+    num_classes: 2
+    class_names: [ 'pedestrian' ]
 datasets:
-  train: ("coco2017_train",)
-  test: "coco2017_val"
-#dataset:
-#  coco:
-#    pass??
+  train: ("kittikins_train",)
+  test: "kittikins_val"
+#  test: "kittikins_train"
+#  test: "kittikins_valmini"
 solver:
-  strict: False
   trainer: base
   batch_size: 8
   max_lr: 0.001
-  num_epochs: 55
+  num_epochs: 1500
   optimizer: SGD
   scheduler: WarmupMultiStepLR
   warmup_iters: 500
@@ -21,10 +41,16 @@ solver:
   weight_decay_bias: 0.0005
   save_every: True
   save_mode: iteration
-  save_freq: 10000
+  save_freq: 5000
+  tb_freq: 20
   dist:
     sampler:
       shuffle: True
+dataset:
+  kitti_kins:
+    use_gray: True
+    remove_empty: True
+    classes: ("__background__", "pedestrian")
 input:
   shuffle: True
   transforms:
@@ -36,14 +62,14 @@ input:
     - name: RandomSampleCrop
     - name: RandomMirror
     - name: Resize
-      max_size: 550
-      preserve_aspect_ratio: False
+      max_size: 546
+      preserve_aspect_ratio: True
       discard_box_width: 0.007272727272727273
       discard_box_height: 0.007272727272727273
       resize_gt: True
     - name: Pad
-      width: 550
-      height: 550
+      width: 994
+      height: 300
       mean: [ 103.94, 116.78, 123.68 ]
     - name: ToPercentCoords
     - name: PrepareMasks
@@ -60,8 +86,8 @@ input:
   transforms_test:
     - name: ConvertFromInts
     - name: Resize
-      max_size: 550
-      preserve_aspect_ratio: False
+      max_size: 546
+      preserve_aspect_ratio: True
       discard_box_width: 0.007272727272727273
       discard_box_height: 0.007272727272727273
       resize_gt: False
@@ -76,9 +102,13 @@ input:
 
 test:
   do_visualization: True
-  visualizer: ??
-  evaluators: [ '??' ]
+  visualizer: yolact
+  #  evaluators: ["kittiobj"]
+  batch_size: 1
+#  save_predictions: True
+
 
 dataloader:
+  #  collator: DetectionBatchCollator
   collator: ExtendedBatchCollator
   num_workers: 4

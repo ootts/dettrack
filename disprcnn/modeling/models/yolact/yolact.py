@@ -5,10 +5,11 @@ import torch
 from disprcnn.modeling.models.yolact.backbone import construct_backbone
 # from data.config import cfg, mask_type
 from disprcnn.modeling.models.yolact.layers import Detect, MultiBoxLoss
-from disprcnn.modeling.models.yolact.layers.output_utils import undo_image_transformation, postprocess
+from disprcnn.modeling.models.yolact.layers.output_utils import undo_image_transformation
 # As of March 10, 2019, Pytorch DataParallel still doesn't support JIT Script Modules
 from disprcnn.modeling.models.yolact.submodules import *
 from disprcnn.utils.plt_utils import COLORS, show
+from disprcnn.modeling.models.yolact.layers.box_utils import crop, sanitize_coordinates
 
 
 class Yolact(nn.Module):
@@ -53,7 +54,7 @@ class Yolact(nn.Module):
         src_channels = self.backbone.channels
 
         if self.cfg.use_maskiou:
-            self.maskiou_net = FastMaskIoUNet()
+            self.maskiou_net = FastMaskIoUNet(self.cfg)
 
         if self.cfg.fpn is not None:
             # Some hacky rewiring to accomodate the FPN
@@ -272,7 +273,7 @@ class YolactWrapper(nn.Module):
                                   ], dim=1) for boxlist in dps['target']]
             masks = [boxlist.get_field('masks').float() for boxlist in dps['target']]
             num_crowds = dps['num_crowds']
-            losses = self.criterion(outputs, targets, masks, num_crowds, self.model.mask_dim)
+            losses = self.criterion(self.model, outputs, targets, masks, num_crowds, self.model.mask_dim)
         return outputs, losses
 
     def prep_display(self, dets_out, img, h, w, undo_transform=True, class_color=False, mask_alpha=0.45, fps_str=''):
@@ -287,10 +288,13 @@ class YolactWrapper(nn.Module):
         else:
             img_gpu = img / 255.0
             h, w, _ = img.shape
-
-        t = postprocess(dets_out, w, h, visualize_lincomb=False,
-                        crop_masks=True,
-                        score_threshold=self.cfg.score_threshold)
+        save = self.cfg.rescore_bbox
+        self.cfg.defrost()
+        self.cfg.rescore_bbox = True
+        t = self.postprocess(dets_out, w, h, visualize_lincomb=False,
+                             crop_masks=True,
+                             score_threshold=self.cfg.score_threshold)
+        self.cfg.rescore_bbox = save
 
         idx = t[1].argsort(0, descending=True)[:self.cfg.top_k]
 
@@ -382,3 +386,112 @@ class YolactWrapper(nn.Module):
                         cv2.LINE_AA)
 
         return img_numpy
+
+    def postprocess(self, det_output, w, h, batch_idx=0, interpolation_mode='bilinear',
+                    visualize_lincomb=False, crop_masks=True, score_threshold=0, to_long=True):
+        """
+        Postprocesses the output of Yolact on testing mode into a format that makes sense,
+        accounting for all the possible configuration settings.
+
+        Args:
+            - det_output: The lost of dicts that Detect outputs.
+            - w: The real with of the image.
+            - h: The real height of the image.
+            - batch_idx: If you have multiple images for this batch, the image's index in the batch.
+            - interpolation_mode: Can be 'nearest' | 'area' | 'bilinear' (see torch.nn.functional.interpolate)
+
+        Returns 4 torch Tensors (in the following order):
+            - classes [num_det]: The class idx for each detection.
+            - scores  [num_det]: The confidence score for each detection.
+            - boxes   [num_det, 4]: The bounding box for each detection in absolute point form.
+            - masks   [num_det, h, w]: Full image masks for each detection.
+        """
+
+        dets = det_output[batch_idx]
+        # net = dets['net']
+        dets = dets['detection']
+
+        # if dets is None:
+        if dets is None:
+            return [torch.Tensor()] * 4  # Warning, this is 4 copies of the same thing
+
+        if score_threshold > 0:
+            keep = dets['score'] > score_threshold
+
+            for k in dets:
+                if k != 'proto':
+                    dets[k] = dets[k][keep]
+
+            if dets['score'].size(0) == 0:
+                return [torch.Tensor()] * 4
+
+        # Actually extract everything from dets now
+        classes = dets['class']
+        boxes = dets['box']
+        scores = dets['score']
+        masks = dets['mask']
+
+        # if cfg.mask_type == 1 and cfg.eval_mask_branch:
+        # At this points masks is only the coefficients
+        proto_data = dets['proto']
+
+        # Test flag, do not upvote
+        # if cfg.mask_proto_debug:
+        #     np.save('scripts/proto.npy', proto_data.cpu().numpy())
+
+        if visualize_lincomb:
+            display_lincomb(proto_data, masks)
+
+        masks = proto_data @ masks.t()
+        masks = torch.sigmoid(masks)
+
+        # Crop masks before upsampling because you know why
+        if crop_masks:
+            masks = crop(masks, boxes)
+
+        # Permute into the correct output shape [num_dets, proto_h, proto_w]
+        masks = masks.permute(2, 0, 1).contiguous()
+
+        if self.cfg.use_maskiou:
+            with torch.no_grad():
+                maskiou_p = self.model.maskiou_net(masks.unsqueeze(1))
+                maskiou_p = torch.gather(maskiou_p, dim=1, index=classes.unsqueeze(1)).squeeze(1)
+                if self.cfg.rescore_mask:
+                    if self.cfg.rescore_bbox:
+                        scores = scores * maskiou_p
+                    else:
+                        scores = [scores, scores * maskiou_p]
+
+        # Scale masks up to the full image
+        masks = F.interpolate(masks.unsqueeze(0), (h, w), mode=interpolation_mode, align_corners=False).squeeze(0)
+
+        # Binarize the masks
+        masks.gt_(0.5)
+
+        boxes[:, 0], boxes[:, 2] = sanitize_coordinates(boxes[:, 0], boxes[:, 2], w, cast=False)
+        boxes[:, 1], boxes[:, 3] = sanitize_coordinates(boxes[:, 1], boxes[:, 3], h, cast=False)
+        if to_long:
+            boxes = boxes.long()
+
+        # if cfg.mask_type == 0 and cfg.eval_mask_branch:
+        #     # Upscale masks
+        #     full_masks = torch.zeros(masks.size(0), h, w)
+        #
+        #     for jdx in range(masks.size(0)):
+        #         x1, y1, x2, y2 = boxes[jdx, :]
+        #
+        #         mask_w = x2 - x1
+        #         mask_h = y2 - y1
+        #
+        #         # Just in case
+        #         if mask_w * mask_h <= 0 or mask_w < 0:
+        #             continue
+        #
+        #         mask = masks[jdx, :].view(1, 1, cfg.mask_size, cfg.mask_size)
+        #         mask = F.interpolate(mask, (mask_h, mask_w), mode=interpolation_mode, align_corners=False)
+        #         mask = mask.gt(0.5).float()
+        #         full_masks[jdx, y1:y2, x1:x2] = mask
+        #
+        #     masks = full_masks
+
+        return classes, scores, boxes, masks

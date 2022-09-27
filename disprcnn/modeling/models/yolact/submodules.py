@@ -369,7 +369,9 @@ class FastMaskIoUNet(ScriptModuleWrapper):
         self.cfg = cfg
         input_channels = 1
         last_layer = [(self.cfg.num_classes - 1, 1, {})]
-        self.maskiou_net, _ = make_net(input_channels, self.cfg.maskiou_net + last_layer, include_last_relu=True)
+        maskiou_net = [(8, 3, {'stride': 2}), (16, 3, {'stride': 2}), (32, 3, {'stride': 2}), (64, 3, {'stride': 2}),
+                       (128, 3, {'stride': 2})]
+        self.maskiou_net, _ = make_net(input_channels, maskiou_net + last_layer, include_last_relu=True)
 
     def forward(self, x):
         x = self.maskiou_net(x)

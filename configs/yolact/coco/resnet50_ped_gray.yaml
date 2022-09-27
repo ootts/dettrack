@@ -1,11 +1,15 @@
 model:
   meta_architecture: "Yolact"
+  yolact:
+    num_classes: 2
+    class_names: [ "person" ]
 datasets:
   train: ("coco2017_train",)
   test: "coco2017_val"
 dataset:
   coco:
     use_gray: True
+    class_only: "person"
 
 solver:
   trainer: base

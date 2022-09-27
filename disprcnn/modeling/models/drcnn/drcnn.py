@@ -36,7 +36,7 @@ from disprcnn.structures.segmentation_mask import SegmentationMask
 
 from disprcnn.structures.bounding_box import BoxList
 
-from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
+# from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
 
 from disprcnn.modeling.models.yolact.yolact import Yolact
 from torch import nn
@@ -138,16 +138,20 @@ class DRCNN(nn.Module):
                 assert self.cfg.yolact_tracking_on is True
                 assert self.yolact_tracking.training is False
                 with torch.no_grad():
-                    left_result, _ = self.yolact_tracking({'image': dps['images']['left'],
-                                                           'seq': dps['seq'],
-                                                           'width': dps['width'],
-                                                           'height': dps['height'],
-                                                           }, track=True, add_mask=True, mask_mode=self.cfg.mask_mode)
-                    right_result, _ = self.yolact_tracking({'image': dps['images']['right'],
-                                                            'seq': dps['seq'],
-                                                            'width': dps['width'],
-                                                            'height': dps['height'],
-                                                            }, track=False, add_mask=False)
+                    left_result, _ = self.yolact_tracking({
+                        'global_step': dps['global_step'],
+                        'image': dps['images']['left'],
+                        'seq': dps['seq'],
+                        'width': dps['width'],
+                        'height': dps['height'],
+                    }, track=True, add_mask=True, mask_mode=self.cfg.mask_mode)
+                    right_result, _ = self.yolact_tracking({
+                        'global_step': dps['global_step'],
+                        'image': dps['images']['right'],
+                        'seq': dps['seq'],
+                        'width': dps['width'],
+                        'height': dps['height'],
+                    }, track=False, add_mask=False)
                 yolact_forward_time = self.evaltime('yolact_tracking forward')
                 self.time_meter.update(yolact_forward_time)
                 if self.total_cfg.evaltime:
@@ -168,9 +172,9 @@ class DRCNN(nn.Module):
             right_result.add_field('imgid', dps['imgid'][0].item())
             if self.dbg:
                 left_result.plot(dps['original_images']['left'][0],
-                                 class_names=self.yolact.cfg.class_names, show=True)
+                                 class_names=self.total_cfg.model.yolact.class_names, show=True)
                 right_result.plot(dps['original_images']['right'][0],
-                                  class_names=self.yolact.cfg.class_names, show=True)
+                                  class_names=self.total_cfg.model.yolact.class_names, show=True)
             ##############  ↓ Step 2: idispnet  ↓  ##############
             if self.cfg.idispnet_on:
                 assert self.idispnet.training is False
@@ -495,7 +499,7 @@ class DRCNN(nn.Module):
         anchor_area_threshold = self.cfg.detector_3d.anchor_area_threshold
         if anchor_area_threshold >= 0:
             coors = coordinates
-            dense_voxel_map = sparse_sum_for_anchors_mask(to_array(coors, int), tuple(grid_size[::-1][1:]))
+            dense_voxel_map = sparse_sum_for_anchors_mask(to_array(coors), tuple(grid_size[::-1][1:]))
             dense_voxel_map = dense_voxel_map.cumsum(0)
             dense_voxel_map = dense_voxel_map.cumsum(1)
             anchors_area = fused_get_anchors_area(dense_voxel_map, to_array(anchors_bv),
@@ -544,7 +548,7 @@ class DRCNN(nn.Module):
             vis3d.add_point_cloud(pts_rect)
             vis3d.add_boxes(left_result.get_field('box3d').convert('corners').bbox_3d, name='pred')
         left_result.plot(dps['original_images']['left'][0], show=False, calib=calib, ignore_2d_when_3d_exists=True,
-                         class_names=self.yolact.cfg.class_names,
+                         class_names=self.total_cfg.model.yolact.class_names,
                          draw_mask=False)
         outpath = osp.join(vis3d.out_folder, vis3d.sequence_name, f'{vis3d.scene_id:05d}', 'images', 'left_result.png')
         os.makedirs(osp.dirname(outpath))

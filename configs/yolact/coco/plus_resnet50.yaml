@@ -1,5 +1,25 @@
 model:
   meta_architecture: "Yolact"
+  yolact:
+    backbone:
+      args: ([3, 4, 6, 3], [0, 4, 6, 3])
+      selected_layers: [ 1,2,3 ]
+      pred_aspect_ratios: [ [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ], [ [ 1, 0.5, 2 ] ] ]
+      pred_scales: [ [ 24.0, 30.238105197476955, 38.097625247236785 ],
+                     [ 48.0, 60.47621039495391, 76.19525049447357 ],
+                     [ 96.0, 120.95242078990782, 152.39050098894714 ],
+                     [ 192.0, 241.90484157981564, 304.7810019778943 ],
+                     [ 384.0, 483.8096831596313, 609.5620039557886 ] ]
+      use_pixel_scales: True
+      preapply_sqrt: False
+      use_square_anchors: False
+    use_maskiou: True
+    #    maskiou_net: [ (8, 3, { 'stride': 2 }), (16, 3, { 'stride': 2 }), (32, 3, { 'stride': 2 }), (64, 3, { 'stride': 2 }), (128, 3, { 'stride': 2 }) ],
+    maskiou_alpha: 25
+    rescore_bbox: False
+    rescore_mask: True
+
+    discard_mask_area: 25
 datasets:
   train: ("coco2017_train",)
   test: "coco2017_val"
@@ -7,7 +27,7 @@ datasets:
 #  coco:
 #    pass??
 solver:
-  strict: False
+  strict: True
   trainer: base
   batch_size: 8
   max_lr: 0.001

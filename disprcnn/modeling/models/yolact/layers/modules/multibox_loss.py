@@ -55,7 +55,7 @@ class MultiBoxLoss(nn.Module):
             self.class_instances = None
             self.total_instances = 0
 
-    def forward(self, predictions, targets, masks, num_crowds, mask_dim):
+    def forward(self, net, predictions, targets, masks, num_crowds, mask_dim):
         """Multibox Loss
         Args:
             predictions (tuple): A tuple containing loc preds, conf preds,
@@ -134,9 +134,9 @@ class MultiBoxLoss(nn.Module):
             gt_box_t[idx, :, :] = truths[idx_t[idx]]
 
         # wrap targets
-        loc_t = Variable(loc_t, requires_grad=False)
-        conf_t = Variable(conf_t, requires_grad=False)
-        idx_t = Variable(idx_t, requires_grad=False)
+        # loc_t = Variable(loc_t, requires_grad=False)
+        # conf_t = Variable(conf_t, requires_grad=False)
+        # idx_t = Variable(idx_t, requires_grad=False)
 
         pos = conf_t > 0
         num_pos = pos.sum(dim=1, keepdim=True)
@@ -150,7 +150,7 @@ class MultiBoxLoss(nn.Module):
         if self.cfg.train_boxes:
             loc_p = loc_data[pos_idx].view(-1, 4)
             loc_t = loc_t[pos_idx].view(-1, 4)
-            losses['B'] = F.smooth_l1_loss(loc_p, loc_t, reduction='sum') * self.cfg.bbox_alpha
+            losses['localization_loss'] = F.smooth_l1_loss(loc_p, loc_t, reduction='sum') * self.cfg.bbox_alpha
 
         if self.cfg.train_masks:
             if self.cfg.mask_type == 0:
@@ -160,10 +160,10 @@ class MultiBoxLoss(nn.Module):
                         pos_masks.append(masks[idx][idx_t[idx, pos[idx]]])
                     masks_t = torch.cat(pos_masks, 0)
                     masks_p = mask_data[pos, :].view(-1, mask_dim)
-                    losses['M'] = F.binary_cross_entropy(torch.clamp(masks_p, 0, 1), masks_t,
-                                                         reduction='sum') * self.cfg.mask_alpha
+                    losses['mask_loss'] = F.binary_cross_entropy(torch.clamp(masks_p, 0, 1), masks_t,
+                                                                 reduction='sum') * self.cfg.mask_alpha
                 else:
-                    losses['M'] = self.direct_mask_loss(pos_idx, idx_t, loc_data, mask_data, priors, masks)
+                    losses['mask_loss'] = self.direct_mask_loss(pos_idx, idx_t, loc_data, mask_data, priors, masks)
             elif self.cfg.mask_type == 1:
                 ret = self.lincomb_mask_loss(pos, idx_t, loc_data, mask_data, priors, proto_data, masks, gt_box_t,
                                              score_data, inst_data, labels)
@@ -182,33 +182,34 @@ class MultiBoxLoss(nn.Module):
         # Confidence loss
         if self.cfg.use_focal_loss:
             if self.cfg.use_sigmoid_focal_loss:
-                losses['C'] = self.focal_conf_sigmoid_loss(conf_data, conf_t)
+                losses['confidence_loss'] = self.focal_conf_sigmoid_loss(conf_data, conf_t)
             elif self.cfg.use_objectness_score:
-                losses['C'] = self.focal_conf_objectness_loss(conf_data, conf_t)
+                losses['confidence_loss'] = self.focal_conf_objectness_loss(conf_data, conf_t)
             else:
-                losses['C'] = self.focal_conf_loss(conf_data, conf_t)
+                losses['confidence_loss'] = self.focal_conf_loss(conf_data, conf_t)
         else:
             if self.cfg.use_objectness_score:
-                losses['C'] = self.conf_objectness_loss(conf_data, conf_t, batch_size, loc_p, loc_t, priors)
+                losses['confidence_loss'] = self.conf_objectness_loss(conf_data, conf_t, batch_size, loc_p, loc_t,
+                                                                      priors)
             else:
-                losses['C'] = self.ohem_conf_loss(conf_data, conf_t, pos, batch_size)
+                losses['confidence_loss'] = self.ohem_conf_loss(conf_data, conf_t, pos, batch_size)
 
         # Mask IoU Loss
         if self.cfg.use_maskiou and maskiou_targets is not None:
-            raise NotImplementedError()
-            # losses['I'] = self.mask_iou_loss(net, maskiou_targets)
+            # raise NotImplementedError()
+            losses['mask_iou_loss'] = self.mask_iou_loss(net, maskiou_targets)
 
         # These losses also don't depend on anchors
         if self.cfg.use_class_existence_loss:
-            losses['E'] = self.class_existence_loss(predictions['classes'], class_existence_t)
+            losses['class_existence_loss'] = self.class_existence_loss(predictions['classes'], class_existence_t)
         if self.cfg.use_semantic_segmentation_loss:
-            losses['S'] = self.semantic_segmentation_loss(predictions['segm'], masks, labels)
+            losses['semantic_segmentation_loss'] = self.semantic_segmentation_loss(predictions['segm'], masks, labels)
 
         # Divide all losses by the number of positives.
         # Don't do it for loss[P] because that doesn't depend on the anchors.
         total_num_pos = num_pos.data.sum().float()
         for k in losses:
-            if k not in ('P', 'E', 'S'):
+            if k not in ('P', 'class_existence_loss', 'semantic_segmentation_loss'):
                 losses[k] /= total_num_pos
             else:
                 losses[k] /= batch_size
@@ -708,51 +709,51 @@ class MultiBoxLoss(nn.Module):
             loss_m += torch.sum(pre_loss)
 
             if self.cfg.use_maskiou:
-                raise NotImplementedError()
-                # if cfg.discard_mask_area > 0:
-                #     gt_mask_area = torch.sum(mask_t, dim=(0, 1))
-                #     select = gt_mask_area > cfg.discard_mask_area
-                #
-                #     if torch.sum(select) < 1:
-                #         continue
-                #
-                #     pos_gt_box_t = pos_gt_box_t[select, :]
-                #     pred_masks = pred_masks[:, :, select]
-                #     mask_t = mask_t[:, :, select]
-                #     label_t = label_t[select]
+                # raise NotImplementedError()
+                if self.cfg.discard_mask_area > 0:
+                    gt_mask_area = torch.sum(mask_t, dim=(0, 1))
+                    select = gt_mask_area > self.cfg.discard_mask_area
 
-                # maskiou_net_input = pred_masks.permute(2, 0, 1).contiguous().unsqueeze(1)
-                # pred_masks = pred_masks.gt(0.5).float()
-                # maskiou_t = self._mask_iou(pred_masks, mask_t)
-                #
-                # maskiou_net_input_list.append(maskiou_net_input)
-                # maskiou_t_list.append(maskiou_t)
-                # label_t_list.append(label_t)
+                    if torch.sum(select) < 1:
+                        continue
 
-        losses = {'M': loss_m * self.cfg.mask_alpha / mask_h / mask_w}
+                    pos_gt_box_t = pos_gt_box_t[select, :]
+                    pred_masks = pred_masks[:, :, select]
+                    mask_t = mask_t[:, :, select]
+                    label_t = label_t[select]
+
+                maskiou_net_input = pred_masks.permute(2, 0, 1).contiguous().unsqueeze(1)
+                pred_masks = pred_masks.gt(0.5).float()
+                maskiou_t = self._mask_iou(pred_masks, mask_t)
+
+                maskiou_net_input_list.append(maskiou_net_input)
+                maskiou_t_list.append(maskiou_t)
+                label_t_list.append(label_t)
+
+        losses = {'mask_loss': loss_m * self.cfg.mask_alpha / mask_h / mask_w}
 
         if self.cfg.mask_proto_coeff_diversity_loss:
             losses['D'] = loss_d
 
         if self.cfg.use_maskiou:
-            raise NotImplementedError()
+            # raise NotImplementedError()
             # discard_mask_area discarded every mask in the batch, so nothing to do here
-            # if len(maskiou_t_list) == 0:
-            #     return losses, None
-            #
-            # maskiou_t = torch.cat(maskiou_t_list)
-            # label_t = torch.cat(label_t_list)
-            # maskiou_net_input = torch.cat(maskiou_net_input_list)
-            #
-            # num_samples = maskiou_t.size(0)
-            # if cfg.maskious_to_train > 0 and num_samples > cfg.maskious_to_train:
-            #     perm = torch.randperm(num_samples)
-            #     select = perm[:cfg.masks_to_train]
-            #     maskiou_t = maskiou_t[select]
-            #     label_t = label_t[select]
-            #     maskiou_net_input = maskiou_net_input[select]
-            #
-            # return losses, [maskiou_net_input, maskiou_t, label_t]
+            if len(maskiou_t_list) == 0:
+                return losses, None
+
+            maskiou_t = torch.cat(maskiou_t_list)
+            label_t = torch.cat(label_t_list)
+            maskiou_net_input = torch.cat(maskiou_net_input_list)
+
+            num_samples = maskiou_t.size(0)
+            if self.cfg.maskious_to_train > 0 and num_samples > self.cfg.maskious_to_train:
+                perm = torch.randperm(num_samples)
+                select = perm[:self.cfg.masks_to_train]
+                maskiou_t = maskiou_t[select]
+                label_t = label_t[select]
+                maskiou_net_input = maskiou_net_input[select]
+
+            return losses, [maskiou_net_input, maskiou_t, label_t]
 
         return losses
 
@@ -774,4 +775,4 @@ class MultiBoxLoss(nn.Module):
 
         loss_i = F.smooth_l1_loss(maskiou_p, maskiou_t, reduction='sum')
 
-        return loss_i * cfg.maskiou_alpha
+        return loss_i * self.cfg.maskiou_alpha

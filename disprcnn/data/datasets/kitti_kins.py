@@ -81,7 +81,12 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
         self.truncations_list, self.occlusions_list = self.get_truncations_occluded_list()
         if ds_len > 0:
             self.ids = self.ids[:ds_len]
-
+        if self.cfg.remove_empty and self.split == 'train':
+            new_ids = []
+            for imgid in self.ids:
+                if self.annotations['left'][int(imgid)]['labels'].sum() > 0:
+                    new_ids.append(imgid)
+            self.ids = new_ids
         print('using dataset of length', self.__len__())
 
     def __getitem__(self, index):

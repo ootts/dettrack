@@ -14,7 +14,7 @@ _C.model.meta_architecture = "resnet"
 _C.model.yolact = CN()
 _C.model.yolact.freeze_bn = True
 _C.model.yolact.backbone = CN()
-_C.model.yolact.backbone.args = [3, 4, 6, 3]
+_C.model.yolact.backbone.args = ([3, 4, 6, 3],)
 _C.model.yolact.backbone.selected_layers = [1, 2, 3]
 _C.model.yolact.backbone.pred_aspect_ratios = [[[1, 0.5, 2]], [[1, 0.5, 2]], [[1, 0.5, 2]], [[1, 0.5, 2]],
                                                [[1, 0.5, 2]]]
@@ -31,6 +31,12 @@ _C.model.yolact.mask_proto_bias = False
 _C.model.yolact.mask_proto_net = [(256, 3, {'padding': 1}), (256, 3, {'padding': 1}), (256, 3, {'padding': 1}),
                                   (None, -2, {}), (256, 3, {'padding': 1}), (32, 1, {})]
 _C.model.yolact.use_maskiou = False
+_C.model.yolact.maskiou_alpha = 25
+_C.model.yolact.rescore_bbox = False
+_C.model.yolact.rescore_mask = False
+_C.model.yolact.discard_mask_area = 25
+_C.model.yolact.maskious_to_train = -1
+
 _C.model.yolact.share_prediction_module = True
 _C.model.yolact.use_class_existence_loss = False
 _C.model.yolact.use_semantic_segmentation_loss = True
@@ -279,12 +285,13 @@ _C.model.drcnn.nvis = 10
 _C.dataset = CN()
 
 _C.dataset.coco = CN()
-_C.dataset.use_gray = False
-# _C.dataset.use_gray.classes = ()
+_C.dataset.coco.use_gray = False
+_C.dataset.coco.class_only = ""
 
 _C.dataset.kitti_kins = CN()
 _C.dataset.kitti_kins.use_gray = False
 _C.dataset.kitti_kins.classes = ("__background__", "car", "dontcare")
+_C.dataset.kitti_kins.remove_empty = False
 
 _C.dataset.kitti_object = CN()
 _C.dataset.kitti_object.filter_empty = False
@@ -413,6 +420,8 @@ _C.solver.dist = CN()
 _C.solver.dist.sampler = CN()
 _C.solver.dist.sampler.type = 'pytorch'
 _C.solver.dist.sampler.shuffle = False
+
+_C.solver.strict = True
 
 _C.test = CN()
 _C.test.batch_size = 1

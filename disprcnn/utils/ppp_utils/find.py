@@ -6,8 +6,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import fire
-
 
 def _get_info_from_anaconda_info(info, split=":"):
     info = info.strip("\n").replace(" ", "")
@@ -126,7 +124,7 @@ def find_cuda_device_arch():
         find_work_arch = False
         while arch_int > 10:
             try:
-                res = subprocess.check_output("nvcc -arch=sm_{}".format(arch_int), shell=True,  stderr=subprocess.STDOUT)
+                res = subprocess.check_output("nvcc -arch=sm_{}".format(arch_int), shell=True, stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 if "No input files specified" in e.output.decode():
                     find_work_arch = True

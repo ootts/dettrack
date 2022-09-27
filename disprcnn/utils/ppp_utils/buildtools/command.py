@@ -7,8 +7,6 @@ from enum import Enum
 from functools import partial
 from pathlib import Path
 
-import fire
-
 from disprcnn.utils.ppp_utils.find import find_cuda, find_cuda_device_arch
 
 

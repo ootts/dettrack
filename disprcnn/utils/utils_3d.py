@@ -1,7 +1,7 @@
 import open3d as o3d
 import cv2
-import pytorch3d.transforms
-import torch.nn.functional as F
+# import pytorch3d.transforms
+# import torch.nn.functional as F
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -1705,6 +1705,7 @@ def cpa_pytorch3d_api(pts0, pts1):
 
 @dispatch(np.ndarray)
 def interp_pose(poses):
+    import pytorch3d.transforms
     """
 
     :param poses: np.ndarray N,4,4

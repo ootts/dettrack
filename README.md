@@ -1,4 +1,4 @@
-# 3D Object Detection and Tracking from Stereo Images
+# 3D Object Detection and Tracking
 
 ## Overview
 Given a sequence of stereo images, this project aims to perform 3D object detection and tracking.
@@ -11,7 +11,7 @@ The system is based on [Disp R-CNN](https://arxiv.org/pdf/2004.03572.pdf) with t
 - Python 3.7
 - Nvidia GPU
 - PyTorch 1.10.0
-- boost 1.65.1 (recommended)
+- boost<=1.71 (recommended)
 
 ## Install
 
@@ -19,21 +19,36 @@ The system is based on [Disp R-CNN](https://arxiv.org/pdf/2004.03572.pdf) with t
 # clone
 git clone https://github.com/ootts/dettrack.git
 # install conda environment
-conda env create -f environment.yaml
+conda create -n dettrack python=3.7 -y
 conda activate dettrack
+conda install pytorch=1.10.0 torchvision=0.11.1 cudatoolkit=10.2 -c pytorch
+pip install -r requirements.txt
 sh build_and_install.sh
 ```
 
 ## Inference example on KITTI
 1. Prepare data
+   download from [here](https://drive.google.com/file/d/1uokHLQg6CuwqchJiMIvbiWaAAYAPN3qH/view?usp=sharing) and extract into PROJECTROOT/data
 
-2. Download trained models.
+2. Prepare models.
+   download from [here](https://drive.google.com/file/d/15sJ4msyCSwnYBgRb8eEFGzkRmK9QnObV/view?usp=sharing) and extract into PROJECTROOT/models.
 
-3. Run inference and visualization.
+   Note that only **cars** are supported by now.
+
+3. Export environment variables
+```bash
+export CUDA_HOME=/usr/local/cuda-10.2
+export NUMBAPRO_CUDA_DRIVER=/usr/lib/x86_64-linux-gnu/libcuda.so
+export NUMBAPRO_LIBDEVICE=/usr/local/cuda-10.2/nvvm/libdevice
+export NUMBAPRO_NVVM=/usr/local/cuda-10.2/nvvm/lib64/libnvvm.so
+```
+
+1. Run inference and visualization.
+
 ```bash
 cd PROJECTROOT
-wis3d --host localhost --vis_dir dbg
-# Then open localhost:19090 in your browser.
+wis3d --host localhost --vis_dir dbg --port 19090
+# Then open http://localhost:19090/?tab=3d&sequence=drcnn_vis_final_result in your browser.
 python tools/test_net.py -c configs/drcnn/kitti_tracking/pointpillars_112_demo.yaml dbg True
 ```
 

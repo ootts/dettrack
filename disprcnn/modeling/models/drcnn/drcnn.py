@@ -5,7 +5,7 @@ import os.path as osp
 import loguru
 import numba.cuda
 import numpy as np
-import pytorch_ssim
+from disprcnn.utils.pytorch_ssim import ssim
 import torch
 from tensorboardX import SummaryWriter
 
@@ -308,7 +308,7 @@ class DRCNN(nn.Module):
                     h = min(min(h, H - y1, ), H - y1p)
                     lroi = img2[y1:y1 + h, x1:x1 + w, :].permute(2, 0, 1)[None] / 255.0
                     rroi = img3[y1p:y1p + h, x1p:x1p + w, :].permute(2, 0, 1)[None] / 255.0
-                    s = pytorch_ssim.ssim(lroi, rroi)
+                    s = ssim(lroi, rroi)
                 else:
                     s = -10
                 ssims[i, j] = s

@@ -31,7 +31,7 @@ model:
     num_point_features: 4
     pretrained_model: "models/pointpillars/disprcnn_112/train/model_epoch_000040.pth"
 datasets:
-  train: ("kittitrackingstereo_train",)
+  train: ("kittitrackingstereo_demo",)
   test: "kittitrackingstereo_demo"
 solver:
   trainer: drcnn

@@ -47,6 +47,8 @@ class KITTITrackingStereoDataset(torch.utils.data.Dataset):
             self.seqs = [0, 2, 3, 4, 5, 7, 9, 11, 17]
         elif split == 'val':
             self.seqs = [1, 6, 8, 10, 12, 13, 14, 15, 16, 18, 19]
+        elif split == 'demo':
+            self.seqs = [1]
         else:
             raise NotImplementedError()
 
@@ -87,7 +89,7 @@ class KITTITrackingStereoDataset(torch.utils.data.Dataset):
                 'width': width,
                 'index': index
             }
-        elif self.split == 'val':
+        elif self.split in ['val', 'demo']:
             seq, imgid = self.pairs[index]
             imgs = self.get_image(seq, imgid)
             time.sleep(0.5)
@@ -137,7 +139,7 @@ class KITTITrackingStereoDataset(torch.utils.data.Dataset):
             nimgs = len(os.listdir(osp.join(self.root, 'tracking', split, 'image_02', f"{seq:04d}")))
             if self.split == 'train':
                 pairs = list(zip([seq] * (nimgs - 1), range(0, nimgs - 1), range(1, nimgs)))
-            elif self.split == 'val':
+            elif self.split in ['val', 'demo']:
                 pairs = list(zip([seq] * nimgs, range(0, nimgs)))
             else:
                 raise NotImplementedError()

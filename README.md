@@ -1,104 +1,47 @@
-# Deep Learning Template in PyTorch
+# 3D Object Detection and Tracking from Stereo Images
 
-## Features
-1. Easy distributed training.
+## Overview
+Given a sequence of stereo images, this project aims to perform 3D object detection and tracking.
+
+The system is based on [Disp R-CNN](https://arxiv.org/pdf/2004.03572.pdf) with the 2D and 3D detectors replaced with [Yolact](https://arxiv.org/pdf/1904.02689.pdf) and [PointPillars](https://arxiv.org/pdf/1812.05784.pdf) for faster running speed.
+
+## Requirements
+
+- Ubuntu 16.04+
+- Python 3.7
+- Nvidia GPU
+- PyTorch 1.10.0
+- boost 1.65.1 (recommended)
+
+## Install
+
 ```bash
-trainer=Trainer(...)
-trainer.to_distributed()
-trainer.fit()
-```
-2. Easy distributed inference.
-```bash
-trainer=Trainer(...)
-trainer.to_distributed()
-trainer.get_preds()
-```
-3. Learning-rate finder helps you find best learning rate.
-```bash
-trainer=Trainer(...)
-trainer.find_lr()
-```
-
-![](tests/lr.jpg)
-
-### Install
-
-1. install PyTorch according to https://pytorch.org/
-2. pip install -r requirements.txt
-3. sh build_and_install.sh
-
-## Training and inference example for MNIST 
-1. Find learning-rate.
-```bash
-python train_net.py --config-file configs/mnist/defaults.yaml --mode findlr
+# clone
+git clone https://github.com/ootts/dettrack.git
+# install conda environment
+conda env create -f environment.yaml
+conda activate dettrack
+sh build_and_install.sh
 ```
 
-2. Training.
+## Inference example on KITTI
+1. Prepare data
+
+2. Download trained models.
+
+3. Run inference and visualization.
 ```bash
-# single gpu
-python train_net.py --config-file configs/mnist/defaults.yaml --num-gpus 1
-```
-```bash
-# multi-gpu distributed training.
-python train_net.py --config-file configs/mnist/defaults.yaml --num-gpus 4
-```
-2. Inference and evaluation.
-```bash
-# single gpu
-python train_net.py --config-file configs/mnist/defaults.yaml --mode eval --num-gpus 1
-```
-```bash
-# multi-gpu distributed inference.
-python train_net.py --config-file configs/mnist/defaults.yaml --mode eval --num-gpus 4
+cd PROJECTROOT
+wis3d --host localhost --vis_dir dbg
+# Then open localhost:19090 in your browser.
+python tools/test_net.py -c configs/drcnn/kitti_tracking/pointpillars_112_demo.yaml dbg True
 ```
 
-## Extend by your own dataset.
+4. Run inference and evaluate running time.
 
-1. Configs
-
-2. Dataset
-
-   1. Override torch.utils.dataset.Dataset
-
-      Create a new Python file in deep_learning_template/data/datasets.
-
-      The dataset must accept ds_len and transforms as parameter at least.
-
-   2. Register
-
-      Add in deep_learning_template/data/datasets/\__init__.py
-
-   3. Define in PathCatalog:deep_learning_template/config/paths_catalog.py
-
-      Add in **DATASET**.
-
-      Add in **get** method.
-
-3. Trainer
-
-   Add a new file in deep_learning_template/trainer.
-
-   Register in deep_learning_template/trainer/build.py
-
-4. Loss
-
-   Define in deep_learning_template/loss/build.py
-
-5. Metrics
-
-   Add new file in deep_learning_template/metric.
-
-   Register in deep_learning_template/metric/build.py
-
-6. Model
-
-   Add new file in deep_learning_template/modeling/models.
-
-   Register in deep_learning_template/modeling/models/models.py
-
-   All models must accept cfg as parameter only.
-
-7. Evaluator
-
-   Define in deep_learning_template/evaluators/build.py
+```bash
+python tools/test_net.py -c configs/drcnn/kitti_tracking/pointpillars_112_demo.yaml model.drcnn.mask_mode mask
+tensorboard --logdir models/drcnn/kitti_tracking/pointpillars_112_demo/evaltime/kittitrackingstereo_demo/
+# Then open localhost:6006 in your browser and you should see a running time curve.
+```
 

@@ -212,7 +212,7 @@ class YolactTracking(nn.Module):
         confidence = preds[0].get_field('scores')
         if self.total_cfg.evaltime:
             self.meter_2d.update(self.evaltime('2d end'))
-            print('2d', self.meter_2d.avg)
+            # print('2d', self.meter_2d.avg)
         width, height = dps['width'][0].item(), dps['height'][0].item()
 
         if track:
@@ -306,7 +306,7 @@ class YolactTracking(nn.Module):
             pred = preds[0].resize([width, height])
         if self.total_cfg.evaltime:
             self.meter_track.update(self.evaltime('track'))
-            print('track', self.meter_track.avg)
+            # print('track', self.meter_track.avg)
         if self.dbg:
             plt.title(f'global_step: {dps["global_step"]}')
             img = untsfm(dps['image'][0], width, height)

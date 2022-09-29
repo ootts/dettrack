@@ -29,13 +29,15 @@ sh build_and_install.sh
 
 ## Inference example on KITTI
 1. Prepare data
-   download from [here](https://drive.google.com/file/d/1uokHLQg6CuwqchJiMIvbiWaAAYAPN3qH/view?usp=sharing) and extract into PROJECTROOT/data
+   download from [Google drive](https://drive.google.com/file/d/1uokHLQg6CuwqchJiMIvbiWaAAYAPN3qH/view?usp=sharing) and extract into PROJECTROOT/data
 
 2. Prepare models.
-   download from [here](https://drive.google.com/file/d/15sJ4msyCSwnYBgRb8eEFGzkRmK9QnObV/view?usp=sharing) and extract into PROJECTROOT/models.
+   download from [Google drive](https://drive.google.com/file/d/15sJ4msyCSwnYBgRb8eEFGzkRmK9QnObV/view?usp=sharing) and extract into PROJECTROOT/models.
 
    Note that only **cars** are supported by now.
 
+   Or download data and models from [BaiduYun](**https://pan.baidu.com/s/1pyJ3ul8Kf6HHOvZvoF4jMA),   密码: 1bqq.
+   
 3. Export environment variables
 ```bash
 export CUDA_HOME=/usr/local/cuda-10.2

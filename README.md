@@ -36,7 +36,7 @@ sh build_and_install.sh
 
    Note that only **cars** are supported by now.
 
-   Or download data and models from [BaiduYun](**https://pan.baidu.com/s/1pyJ3ul8Kf6HHOvZvoF4jMA),   密码: 1bqq.
+   Or download data and models from [BaiduYun](https://pan.baidu.com/s/1pyJ3ul8Kf6HHOvZvoF4jMA),   密码: 1bqq.
    
 3. Export environment variables
 ```bash

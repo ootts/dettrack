@@ -109,7 +109,7 @@ def mask_iou(masks_a, masks_b, iscrowd=False):
     masks_a = masks_a.view(masks_a.size(0), -1)
     masks_b = masks_b.view(masks_b.size(0), -1)
 
-    intersection = masks_a @ masks_b.t()
+    intersection = masks_a.float() @ masks_b.t().float()
     area_a = masks_a.sum(dim=1).unsqueeze(1)
     area_b = masks_b.sum(dim=1).unsqueeze(0)
 

@@ -31,8 +31,8 @@ class YolactVisualizer:
         outputs, trainer = args
         ds = trainer.valid_dl.dataset
         imgs = []
-        for i in trange(len(outputs)):
-            if 0 < self.cfg.nvis < i: break
+        for i in trange(min(len(outputs), self.cfg.nvis)):
+            # if 0 < self.cfg.nvis < i: break
             dps = ds[i]
             imgid = dps['imgid'] if 'imgid' in dps else i
             dets_out = outputs[i]

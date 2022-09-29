@@ -32,8 +32,7 @@ class DrcnnVisualizer:
         os.system(f'rm {vis_dir}/*')
         outputs, trainer = args
         ds = trainer.valid_dl.dataset
-        for i in trange(len(outputs)):
-            if 0 < self.cfg.nvis < i: break
+        for i in trange(min(len(outputs), self.cfg.nvis)):
             dps = ds[i]
             imgid = dps['imgid'] if 'imgid' in dps else i
             left_img = dps['original_images']['left']

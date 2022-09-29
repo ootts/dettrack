@@ -11,9 +11,9 @@ import os
 def build(cfg):
     def kittiobjeval(predictions, trainer):
         class_names = list(trainer.cfg.dataset.kitti_object.classes)
-        
+
         class_names = [s.capitalize() for s in class_names]
-        output_folder = os.path.join(cfg.output_dir, "evaluate", 'txt')
+        output_folder = os.path.join(cfg.output_dir, f"evaluate/{trainer.cfg.datasets.test}/txt")
         os.makedirs(output_folder, exist_ok=True)
         for i, pred in enumerate(tqdm.tqdm(predictions)):
             limgid = pred["left"].get_field("imgid")
@@ -77,7 +77,8 @@ def build(cfg):
                             [list(map(float, line.split())) for line in f.read().splitlines()]) * 100
                     ap = lines[:, ::4].mean(1).tolist()
                     final_msg += 'AP 3d %.2f %.2f %.2f\n' % (ap[0], ap[1], ap[2])
-                res.update({label+str(iou_thresh)+"_AP_easy":ap[0], label+str(iou_thresh)+"_AP_mod":ap[1], label+str(iou_thresh)+"_AP_hard":ap[2]})
+                res.update({label + str(iou_thresh) + "_AP_easy": ap[0], label + str(iou_thresh) + "_AP_mod": ap[1],
+                            label + str(iou_thresh) + "_AP_hard": ap[2]})
         loguru.logger.info(final_msg)
         return res
 

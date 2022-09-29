@@ -8,8 +8,10 @@ from disprcnn.modeling.models.yolact.layers import Detect, MultiBoxLoss
 from disprcnn.modeling.models.yolact.layers.output_utils import undo_image_transformation
 # As of March 10, 2019, Pytorch DataParallel still doesn't support JIT Script Modules
 from disprcnn.modeling.models.yolact.submodules import *
+from disprcnn.structures.apdataobject import APDataObject
 from disprcnn.utils.plt_utils import COLORS, show
-from disprcnn.modeling.models.yolact.layers.box_utils import crop, sanitize_coordinates
+from disprcnn.modeling.models.yolact.layers.box_utils import crop, sanitize_coordinates, mask_iou, jaccard
+from disprcnn.utils.timer import EvalTime
 
 
 class Yolact(nn.Module):
@@ -252,6 +254,13 @@ class YolactWrapper(nn.Module):
         self.cfg = cfg.model.yolact
         self.model = Yolact(cfg)
         self.criterion = MultiBoxLoss(cfg.model.yolact)
+        # for evaluation
+        self.iou_thresholds = [x / 100 for x in range(50, 100, 5)]
+        self.ap_data = {
+            'box': [[APDataObject() for _ in self.cfg.class_names] for _ in self.iou_thresholds],
+            'mask': [[APDataObject() for _ in self.cfg.class_names] for _ in self.iou_thresholds]
+        }
+        # detections = Detections()
 
     def forward(self, dps):
         outputs = self.model(dps)
@@ -260,10 +269,21 @@ class YolactWrapper(nn.Module):
                 img_numpy = self.prep_display(outputs, dps['image'][0], dps['height'][0].item(), dps['width'][0].item())
                 show(img_numpy)
                 print()
-            # for o, idx in zip(outputs, dps['index'].tolist()):
-            # if o['detection'] is None:
-            #     o['detection'] = {}
-            # o['detection']['index'] = idx
+            else:
+                et = EvalTime(disable=True)
+                et('begin')
+                gt = torch.cat([dps['target'][0].bbox, dps['target'][0].get_field('labels')[:, None]], dim=1)
+                self.prep_metrics(self.ap_data, outputs, dps['image'][0], gt,
+                                  dps['target'][0].get_field('masks'),
+                                  dps['height'][0].item(),
+                                  dps['width'][0].item(),
+                                  dps['num_crowds'].item(),
+                                  dps['imgid'].item(),
+                                  None
+                                  )
+                et('end prep metrics')
+                if dps.get('is_last_frame', False) is True:
+                    print()
             losses = {}
         else:
             # if isinstance(dps['target'][0], torch.Tensor):
@@ -439,8 +459,8 @@ class YolactWrapper(nn.Module):
         # if cfg.mask_proto_debug:
         #     np.save('scripts/proto.npy', proto_data.cpu().numpy())
 
-        if visualize_lincomb:
-            display_lincomb(proto_data, masks)
+        # if visualize_lincomb:
+        #     display_lincomb(proto_data, masks)
 
         masks = proto_data @ masks.t()
         masks = torch.sigmoid(masks)
@@ -495,3 +515,132 @@ class YolactWrapper(nn.Module):
         #     masks = full_masks
 
         return classes, scores, boxes, masks
+
+    def prep_metrics(self, ap_data, dets, img, gt, gt_masks, h, w, num_crowd, image_id, detections):
+        """ Returns a list of APs for this image, with each element being for a class  """
+        gt_boxes = gt[:, :4]
+        gt_boxes[:, [0, 2]] *= w
+        gt_boxes[:, [1, 3]] *= h
+        gt_classes = gt[:, 4].long().tolist()
+        gt_masks = gt_masks.view(-1, h * w)
+
+        if num_crowd > 0:
+            split = lambda x: (x[-num_crowd:], x[:-num_crowd])
+            crowd_boxes, gt_boxes = split(gt_boxes)
+            crowd_masks, gt_masks = split(gt_masks)
+            crowd_classes, gt_classes = split(gt_classes)
+
+        classes, scores, boxes, masks = self.postprocess(dets, w, h, crop_masks=True,
+                                                         score_threshold=0)
+
+        if classes.size(0) == 0:
+            return
+
+        classes = list(classes.cpu().numpy().astype(int))
+        if isinstance(scores, list):
+            box_scores = list(scores[0].cpu().numpy().astype(float))
+            mask_scores = list(scores[1].cpu().numpy().astype(float))
+        else:
+            scores = list(scores.cpu().numpy().astype(float))
+            box_scores = scores
+            mask_scores = scores
+        masks = masks.view(-1, h * w).cuda()
+        boxes = boxes.cuda()
+
+        # if args.output_coco_json:
+        #     boxes = boxes.cpu().numpy()
+        #     masks = masks.view(-1, h, w).cpu().numpy()
+        #     for i in range(masks.shape[0]):
+        #         # Make sure that the bounding box actually makes sense and a mask was produced
+        #         if (boxes[i, 3] - boxes[i, 1]) * (boxes[i, 2] - boxes[i, 0]) > 0:
+        #             detections.add_bbox(image_id, classes[i], boxes[i, :], box_scores[i])
+        #             detections.add_mask(image_id, classes[i], masks[i, :, :], mask_scores[i])
+        #     return
+
+        num_pred = len(classes)
+        num_gt = len(gt_classes)
+
+        mask_iou_cache = _mask_iou(masks, gt_masks)
+        bbox_iou_cache = _bbox_iou(boxes.float(), gt_boxes.float())
+
+        if num_crowd > 0:
+            crowd_mask_iou_cache = _mask_iou(masks, crowd_masks, iscrowd=True)
+            crowd_bbox_iou_cache = _bbox_iou(boxes.float(), crowd_boxes.float(), iscrowd=True)
+        else:
+            crowd_mask_iou_cache = None
+            crowd_bbox_iou_cache = None
+
+        box_indices = sorted(range(num_pred), key=lambda i: -box_scores[i])
+        mask_indices = sorted(box_indices, key=lambda i: -mask_scores[i])
+
+        iou_types = [
+            ('box', lambda i, j: bbox_iou_cache[i, j].item(),
+             lambda i, j: crowd_bbox_iou_cache[i, j].item(),
+             lambda i: box_scores[i], box_indices),
+            ('mask', lambda i, j: mask_iou_cache[i, j].item(),
+             lambda i, j: crowd_mask_iou_cache[i, j].item(),
+             lambda i: mask_scores[i], mask_indices)
+        ]
+
+        for _class in set(classes + gt_classes):
+            ap_per_iou = []
+            num_gt_for_class = sum([1 for x in gt_classes if x == _class])
+
+            for iouIdx in range(len(self.iou_thresholds)):
+                iou_threshold = self.iou_thresholds[iouIdx]
+
+                for iou_type, iou_func, crowd_func, score_func, indices in iou_types:
+                    gt_used = [False] * len(gt_classes)
+
+                    ap_obj = ap_data[iou_type][iouIdx][_class]
+                    ap_obj.add_gt_positives(num_gt_for_class)
+
+                    for i in indices:
+                        if classes[i] != _class:
+                            continue
+
+                        max_iou_found = iou_threshold
+                        max_match_idx = -1
+                        for j in range(num_gt):
+                            if gt_used[j] or gt_classes[j] != _class:
+                                continue
+
+                            iou = iou_func(i, j)
+
+                            if iou > max_iou_found:
+                                max_iou_found = iou
+                                max_match_idx = j
+
+                        if max_match_idx >= 0:
+                            gt_used[max_match_idx] = True
+                            ap_obj.push(score_func(i), True)
+                        else:
+                            # If the detection matches a crowd, we can just ignore it
+                            matched_crowd = False
+
+                            if num_crowd > 0:
+                                for j in range(len(crowd_classes)):
+                                    if crowd_classes[j] != _class:
+                                        continue
+
+                                    iou = crowd_func(i, j)
+
+                                    if iou > iou_threshold:
+                                        matched_crowd = True
+                                        break
+
+                            # All this crowd code so that we can make sure that our eval code gives the
+                            # same result as COCOEval. There aren't even that many crowd annotations to
+                            # begin with, but accuracy is of the utmost importance.
+                            if not matched_crowd:
+                                ap_obj.push(score_func(i), False)
+
+
+def _mask_iou(mask1, mask2, iscrowd=False):
+    ret = mask_iou(mask1, mask2, iscrowd)
+    return ret.cpu()
+
+
+def _bbox_iou(bbox1, bbox2, iscrowd=False):
+    ret = jaccard(bbox1, bbox2, iscrowd)
+    return ret.cpu()

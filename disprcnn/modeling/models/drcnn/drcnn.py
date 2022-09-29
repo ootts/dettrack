@@ -5,6 +5,8 @@ import os.path as osp
 import loguru
 import numba.cuda
 import numpy as np
+
+from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
 from disprcnn.utils.pytorch_ssim import ssim
 import torch
 from tensorboardX import SummaryWriter

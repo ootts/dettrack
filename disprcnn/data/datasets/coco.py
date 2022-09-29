@@ -184,7 +184,8 @@ class COCODetection(data.Dataset):
             'width': width,
             'num_crowds': num_crowds,
             'imgid': img_id,
-            'index': index
+            'index': index,
+            'is_last_frame': index == len(self) - 1
 
         }
         return dps

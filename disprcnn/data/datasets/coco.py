@@ -90,6 +90,7 @@ class COCODetection(data.Dataset):
 
     def __len__(self):
         return len(self.ids)
+        # return 30
 
     def __getitem__(self, index):
         img_id = self.ids[index]
@@ -176,6 +177,7 @@ class COCODetection(data.Dataset):
         boxlist = BoxList(target[:, :4], (1, 1))
         boxlist.add_field("labels", torch.tensor(target[:, -1]).long())
         boxlist.add_field("masks", torch.from_numpy(masks).long())
+        is_last_frame = index == len(self) - 1
         dps = {
             'image': torch.from_numpy(img).permute(2, 0, 1),
             'target': boxlist,
@@ -185,9 +187,10 @@ class COCODetection(data.Dataset):
             'num_crowds': num_crowds,
             'imgid': img_id,
             'index': index,
-            'is_last_frame': index == len(self) - 1
+            'is_last_frame': is_last_frame
 
         }
+        # print(f"index {index}, is_last_frame {is_last_frame}")
         return dps
 
 

@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class APDataObject:
     """
     Stores all the information necessary to calculate the AP for one IoU and one class.

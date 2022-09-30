@@ -79,7 +79,8 @@ input:
       channel_order: 'RGB'
 
 test:
-  do_visualization: True
+  do_visualization: False
+  do_evaluation: False
   visualizer: ??
   evaluators: [ '??' ]
 

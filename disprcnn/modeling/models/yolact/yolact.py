@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import cv2
 import numpy as np
 import torch
@@ -9,6 +11,7 @@ from disprcnn.modeling.models.yolact.layers.output_utils import undo_image_trans
 # As of March 10, 2019, Pytorch DataParallel still doesn't support JIT Script Modules
 from disprcnn.modeling.models.yolact.submodules import *
 from disprcnn.structures.apdataobject import APDataObject
+from disprcnn.structures.bounding_box import BoxList
 from disprcnn.utils.plt_utils import COLORS, show
 from disprcnn.modeling.models.yolact.layers.box_utils import crop, sanitize_coordinates, mask_iou, jaccard
 from disprcnn.utils.timer import EvalTime
@@ -263,17 +266,28 @@ class YolactWrapper(nn.Module):
         # detections = Detections()
 
     def forward(self, dps):
+        et = EvalTime(disable=True)
+        et("")
         outputs = self.model(dps)
+        et("forward")
         if not self.training:
+            w, h = dps['width'][0].item(), dps['height'][0].item()
+            classes, scores, boxes, masks = self.postprocess(outputs, w, h,
+                                                             score_threshold=0.05,
+                                                             to_long=False)
+            result = BoxList(boxes, (w, h))
+            result.add_field("labels", classes)
+            result.add_field("scores", scores)
+            result.add_field("masks", masks)
+            et("decode")
             if self.total_cfg.dbg:
-                img_numpy = self.prep_display(outputs, dps['image'][0], dps['height'][0].item(), dps['width'][0].item())
+                img_numpy = self.prep_display(result, dps['image'][0], dps['height'][0].item(), dps['width'][0].item())
                 show(img_numpy)
                 print()
             else:
-                et = EvalTime(disable=True)
-                et('begin')
+                # et('begin')
                 gt = torch.cat([dps['target'][0].bbox, dps['target'][0].get_field('labels')[:, None]], dim=1)
-                self.prep_metrics(self.ap_data, outputs, dps['image'][0], gt,
+                self.prep_metrics(self.ap_data, result, dps['image'][0], gt,
                                   dps['target'][0].get_field('masks'),
                                   dps['height'][0].item(),
                                   dps['width'][0].item(),
@@ -282,8 +296,8 @@ class YolactWrapper(nn.Module):
                                   None
                                   )
                 et('end prep metrics')
-                if dps.get('is_last_frame', False) is True:
-                    print()
+                if dps.get('is_last_frame', torch.tensor([False])).item() is True:
+                    self.calc_map()
             losses = {}
         else:
             # if isinstance(dps['target'][0], torch.Tensor):
@@ -296,7 +310,7 @@ class YolactWrapper(nn.Module):
             losses = self.criterion(self.model, outputs, targets, masks, num_crowds, self.model.mask_dim)
         return outputs, losses
 
-    def prep_display(self, dets_out, img, h, w, undo_transform=True, class_color=False, mask_alpha=0.45, fps_str=''):
+    def prep_display(self, result, img, h, w, undo_transform=True, class_color=False, mask_alpha=0.45, fps_str=''):
         """
         Note: If undo_transform=False then im_h and im_w are allowed to be None.
         """
@@ -309,20 +323,26 @@ class YolactWrapper(nn.Module):
             img_gpu = img / 255.0
             h, w, _ = img.shape
         save = self.cfg.rescore_bbox
-        self.cfg.defrost()
-        self.cfg.rescore_bbox = True
-        t = self.postprocess(dets_out, w, h, visualize_lincomb=False,
-                             crop_masks=True,
-                             score_threshold=self.cfg.score_threshold)
-        self.cfg.rescore_bbox = save
-
-        idx = t[1].argsort(0, descending=True)[:self.cfg.top_k]
+        # self.cfg.defrost()
+        # self.cfg.rescore_bbox = True
+        # t = self.postprocess(dets_out, w, h, visualize_lincomb=False,
+        #                      crop_masks=True,
+        #                      score_threshold=self.cfg.score_threshold)
+        # self.cfg.rescore_bbox = save
+        # classes, scores, boxes, masks
+        classes = result.get_field("labels")
+        scores = result.get_field("scores")
+        masks = result.get_field("masks")
+        boxes = result.bbox
+        idx = scores.argsort(0, descending=True)[:self.cfg.top_k]
 
         if self.cfg.eval_mask_branch:
             # Masks are drawn on the GPU, so don't copy
-            masks = t[3][idx]
-        classes, scores, boxes = [x[idx].cpu().numpy() for x in t[:3]]
-
+            masks = masks[idx]
+        # classes, scores, boxes = [x[idx].cpu().numpy() for x in t[:3]]
+        classes = classes[idx].cpu().numpy()
+        scores = scores[idx].cpu().numpy()
+        boxes = boxes[idx].cpu().numpy()
         num_dets_to_consider = min(self.cfg.top_k, classes.shape[0])
         if num_dets_to_consider == 0:
             return (img_gpu * 255).byte().cpu().numpy()
@@ -383,7 +403,7 @@ class YolactWrapper(nn.Module):
         #     return img_numpy
 
         for j in reversed(range(num_dets_to_consider)):
-            x1, y1, x2, y2 = boxes[j, :]
+            x1, y1, x2, y2 = map(int, boxes[j, :])
             color = get_color(j)
             score = scores[j]
 
@@ -408,7 +428,7 @@ class YolactWrapper(nn.Module):
         return img_numpy
 
     def postprocess(self, det_output, w, h, batch_idx=0, interpolation_mode='bilinear',
-                    visualize_lincomb=False, crop_masks=True, score_threshold=0, to_long=True):
+                    crop_masks=True, score_threshold=0, to_long=True):
         """
         Postprocesses the output of Yolact on testing mode into a format that makes sense,
         accounting for all the possible configuration settings.
@@ -493,30 +513,9 @@ class YolactWrapper(nn.Module):
         if to_long:
             boxes = boxes.long()
 
-        # if cfg.mask_type == 0 and cfg.eval_mask_branch:
-        #     # Upscale masks
-        #     full_masks = torch.zeros(masks.size(0), h, w)
-        #
-        #     for jdx in range(masks.size(0)):
-        #         x1, y1, x2, y2 = boxes[jdx, :]
-        #
-        #         mask_w = x2 - x1
-        #         mask_h = y2 - y1
-        #
-        #         # Just in case
-        #         if mask_w * mask_h <= 0 or mask_w < 0:
-        #             continue
-        #
-        #         mask = masks[jdx, :].view(1, 1, cfg.mask_size, cfg.mask_size)
-        #         mask = F.interpolate(mask, (mask_h, mask_w), mode=interpolation_mode, align_corners=False)
-        #         mask = mask.gt(0.5).float()
-        #         full_masks[jdx, y1:y2, x1:x2] = mask
-        #
-        #     masks = full_masks
-
         return classes, scores, boxes, masks
 
-    def prep_metrics(self, ap_data, dets, img, gt, gt_masks, h, w, num_crowd, image_id, detections):
+    def prep_metrics(self, ap_data, result, img, gt, gt_masks, h, w, num_crowd, image_id, detections):
         """ Returns a list of APs for this image, with each element being for a class  """
         gt_boxes = gt[:, :4]
         gt_boxes[:, [0, 2]] *= w
@@ -530,20 +529,23 @@ class YolactWrapper(nn.Module):
             crowd_masks, gt_masks = split(gt_masks)
             crowd_classes, gt_classes = split(gt_classes)
 
-        classes, scores, boxes, masks = self.postprocess(dets, w, h, crop_masks=True,
-                                                         score_threshold=0)
+        # classes, scores, boxes, masks = self.postprocess(dets, w, h, crop_masks=True,
+        #                                                  score_threshold=0)
 
-        if classes.size(0) == 0:
+        if len(result) == 0:
             return
 
-        classes = list(classes.cpu().numpy().astype(int))
-        if isinstance(scores, list):
-            box_scores = list(scores[0].cpu().numpy().astype(float))
-            mask_scores = list(scores[1].cpu().numpy().astype(float))
-        else:
-            scores = list(scores.cpu().numpy().astype(float))
-            box_scores = scores
-            mask_scores = scores
+        classes = result.get_field("labels").tolist()
+        scores = result.get_field("scores").tolist()
+        masks = result.get_field("masks")
+        boxes = result.bbox
+        # if isinstance(scores, list):
+        #     box_scores = list(scores[0].cpu().numpy().astype(float))
+        #     mask_scores = list(scores[1].cpu().numpy().astype(float))
+        # else:
+        #     scores = list(scores.cpu().numpy().astype(float))
+        box_scores = scores
+        mask_scores = scores
         masks = masks.view(-1, h * w).cuda()
         boxes = boxes.cuda()
 
@@ -634,6 +636,47 @@ class YolactWrapper(nn.Module):
                             # begin with, but accuracy is of the utmost importance.
                             if not matched_crowd:
                                 ap_obj.push(score_func(i), False)
+
+    def calc_map(self):
+        print('Calculating mAP...')
+        aps = [{'box': [], 'mask': []} for _ in self.iou_thresholds]
+
+        for _class in range(len(self.cfg.class_names)):
+            for iou_idx in range(len(self.iou_thresholds)):
+                for iou_type in ('box', 'mask'):
+                    ap_obj = self.ap_data[iou_type][iou_idx][_class]
+
+                    if not ap_obj.is_empty():
+                        aps[iou_idx][iou_type].append(ap_obj.get_ap())
+
+        all_maps = {'box': OrderedDict(), 'mask': OrderedDict()}
+
+        # Looking back at it, this code is really hard to read :/
+        for iou_type in ('box', 'mask'):
+            all_maps[iou_type]['all'] = 0  # Make this first in the ordereddict
+            for i, threshold in enumerate(self.iou_thresholds):
+                mAP = sum(aps[i][iou_type]) / len(aps[i][iou_type]) * 100 if len(aps[i][iou_type]) > 0 else 0
+                all_maps[iou_type][int(threshold * 100)] = mAP
+            all_maps[iou_type]['all'] = (sum(all_maps[iou_type].values()) / (len(all_maps[iou_type].values()) - 1))
+
+        self.print_maps(all_maps)
+
+        # Put in a prettier format so we can serialize it to json during training
+        all_maps = {k: {j: round(u, 2) for j, u in v.items()} for k, v in all_maps.items()}
+        return all_maps
+
+    def print_maps(self, all_maps):
+        # Warning: hacky
+        make_row = lambda vals: (' %5s |' * len(vals)) % tuple(vals)
+        make_sep = lambda n: ('-------+' * n)
+
+        print()
+        print(make_row([''] + [('.%d ' % x if isinstance(x, int) else x + ' ') for x in all_maps['box'].keys()]))
+        print(make_sep(len(all_maps['box']) + 1))
+        for iou_type in ('box', 'mask'):
+            print(make_row([iou_type] + ['%.2f' % x if x < 100 else '%.1f' % x for x in all_maps[iou_type].values()]))
+        print(make_sep(len(all_maps['box']) + 1))
+        print()
 
 
 def _mask_iou(mask1, mask2, iscrowd=False):

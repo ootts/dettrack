@@ -8,6 +8,7 @@ import numpy as np
 # transpose
 from disprcnn.utils import cv2_util
 from disprcnn.utils.pn_utils import to_array
+from disprcnn.utils.timer import EvalTime
 
 FLIP_LEFT_RIGHT = 0
 FLIP_TOP_BOTTOM = 1
@@ -565,6 +566,23 @@ class BoxList(object):
                 plt.gca().add_collection(seg)
         if show:
             plt.show()
+
+    def compress(self):
+        if self.has_field("masks"):
+            import pycocotools.mask as mask_utils
+            et = EvalTime()
+            et('')
+            bitmasks = self.extra_fields['masks']
+            tmp = np.ascontiguousarray(bitmasks.byte().cpu().numpy().transpose(1, 2, 0))
+            et('tmp')
+            rlemasks = mask_utils.encode(np.asfortranarray(tmp))
+            et('encode')
+            # masks = mask_utils.encode(np.asfortranarray(masks))
+            self.add_field("masks", rlemasks)
+        elif self.has_map("masks"):
+            raise NotImplementedError()
+            print()
+        return self
 
     @property
     def widths(self):

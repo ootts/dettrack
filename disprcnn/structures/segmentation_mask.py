@@ -31,6 +31,12 @@ and PolygonList to make it transparent.
 """
 
 
+class RLEMaskList:
+    def __init__(self, masks, size):
+        self.masks = masks
+        self.size = size
+
+
 class BinaryMaskList(object):
     """
     This class handles binary masks for all objects in the image
@@ -173,6 +179,11 @@ class BinaryMaskList(object):
             return lst.validvec, lst
         else:
             return PolygonList(contours, self.size)
+
+    # def convert_to_rle(self):
+    #     from pycocotools.mask import encode
+    #     masks = encode(self.masks)
+    #     return RLEMaskList(masks, self.size)
 
     def to(self, *args, **kwargs):
         return self
@@ -530,6 +541,8 @@ class SegmentationMask(object):
             self.instances = PolygonList(instances, size)
         elif mode == "mask":
             self.instances = BinaryMaskList(instances, size)
+        # elif mode == 'rle':
+        #     self.instances = RLEMaskList(instances, size)
         else:
             raise NotImplementedError("Unknown mode: %s" % str(mode))
 
@@ -568,6 +581,8 @@ class SegmentationMask(object):
 
         elif mode == "mask":
             converted_instances = self.instances.convert_to_binarymask()
+        elif mode == 'rle':
+            converted_instances = self.instances.convert_to_rle()
         else:
             raise NotImplementedError("Unknown mode: %s" % str(mode))
 

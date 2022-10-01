@@ -1,6 +1,6 @@
-from ..registry import EVALUATORS
-
-from .build import *
+# from disprcnn.metric.accuracy import accuracy
+from .kittiobj import *
+from .yolact import YolactEvaluator
 
 
 def build_evaluators(cfg):

@@ -435,6 +435,7 @@ _C.test.eval_all_min = 0
 _C.test.eval_all_attr = "solver.load_model"
 _C.test.save_predictions = False
 _C.test.training_mode = False
+_C.test.compress_results = False
 _C.test.ckpt_dir = ''
 
 _C.output_dir = ''

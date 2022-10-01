@@ -241,6 +241,8 @@ class BaseTrainer:
                 outputs = list(itertools.chain(*outputs))
             os.makedirs(osp.dirname(prediction_path), exist_ok=True)
             if self.cfg.test.save_predictions and get_rank() == 0:
+                if hasattr(outputs[0], "compress") and self.cfg.compress_results:
+                    outputs = [o.compress() for o in tqdm(outputs, desc="compress")]
                 torch.save(outputs, prediction_path)
         return outputs
 

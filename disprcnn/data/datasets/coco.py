@@ -90,7 +90,6 @@ class COCODetection(data.Dataset):
 
     def __len__(self):
         return len(self.ids)
-        # return 30
 
     def __getitem__(self, index):
         img_id = self.ids[index]

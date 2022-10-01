@@ -266,49 +266,44 @@ class YolactWrapper(nn.Module):
         # detections = Detections()
 
     def forward(self, dps):
-        et = EvalTime(disable=True)
-        et("")
         outputs = self.model(dps)
-        et("forward")
         if not self.training:
-            w, h = dps['width'][0].item(), dps['height'][0].item()
-            classes, scores, boxes, masks = self.postprocess(outputs, w, h,
-                                                             score_threshold=0.05,
-                                                             to_long=False)
-            result = BoxList(boxes, (w, h))
-            result.add_field("labels", classes)
-            result.add_field("scores", scores)
-            result.add_field("masks", masks)
-            et("decode")
-            if self.total_cfg.dbg:
-                img_numpy = self.prep_display(result, dps['image'][0], dps['height'][0].item(), dps['width'][0].item())
-                show(img_numpy)
-                print()
-            else:
-                # et('begin')
-                gt = torch.cat([dps['target'][0].bbox, dps['target'][0].get_field('labels')[:, None]], dim=1)
-                self.prep_metrics(self.ap_data, result, dps['image'][0], gt,
-                                  dps['target'][0].get_field('masks'),
-                                  dps['height'][0].item(),
-                                  dps['width'][0].item(),
-                                  dps['num_crowds'].item(),
-                                  dps['imgid'].item(),
-                                  None
-                                  )
-                et('end prep metrics')
-                if dps.get('is_last_frame', torch.tensor([False])).item() is True:
-                    self.calc_map()
-            losses = {}
+            results = []
+            bsz = dps['width'].shape[0]
+            for bi in range(bsz):
+                w, h = dps['width'][bi].item(), dps['height'][bi].item()
+                classes, scores, boxes, masks = self.postprocess(outputs[bi], w, h,
+                                                                 score_threshold=0.05,
+                                                                 to_long=False)
+                result = BoxList(boxes, (w, h))
+                result.add_field("labels", classes)
+                result.add_field("scores", scores)
+                result.add_field("masks", masks)
+                results.append(result)
+                if self.total_cfg.dbg:
+                    img_numpy = self.prep_display(result, dps['image'][bi], h, w)
+                    show(img_numpy)
+                elif self.total_cfg.model.meta_architecture == 'Yolact':
+                    # et('begin')
+                    gt = torch.cat([dps['target'][bi].bbox, dps['target'][bi].get_field('labels')[:, None]], dim=1)
+                    self.prep_metrics(self.ap_data, result, dps['image'][bi], gt,
+                                      dps['target'][bi].get_field('masks'),
+                                      dps['height'][bi].item(),
+                                      dps['width'][bi].item(),
+                                      dps['num_crowds'][bi].item(),
+                                      dps['imgid'][bi].item(),
+                                      None
+                                      )
+                    if 'is_last_frame' in dps and dps['is_last_frame'][bi].item() is True:
+                        self.calc_map()
+            return results, {}
         else:
-            # if isinstance(dps['target'][0], torch.Tensor):
-            #     targets = dps['target']
-            # else:
             targets = [torch.cat([boxlist.bbox, boxlist.get_field('labels').reshape(-1, 1)
                                   ], dim=1) for boxlist in dps['target']]
             masks = [boxlist.get_field('masks').float() for boxlist in dps['target']]
             num_crowds = dps['num_crowds']
             losses = self.criterion(self.model, outputs, targets, masks, num_crowds, self.model.mask_dim)
-        return outputs, losses
+            return outputs, losses
 
     def prep_display(self, result, img, h, w, undo_transform=True, class_color=False, mask_alpha=0.45, fps_str=''):
         """
@@ -427,7 +422,7 @@ class YolactWrapper(nn.Module):
 
         return img_numpy
 
-    def postprocess(self, det_output, w, h, batch_idx=0, interpolation_mode='bilinear',
+    def postprocess(self, det_output, w, h, interpolation_mode='bilinear',
                     crop_masks=True, score_threshold=0, to_long=True):
         """
         Postprocesses the output of Yolact on testing mode into a format that makes sense,
@@ -447,11 +442,9 @@ class YolactWrapper(nn.Module):
             - masks   [num_det, h, w]: Full image masks for each detection.
         """
 
-        dets = det_output[batch_idx]
-        # net = dets['net']
+        dets = det_output
         dets = dets['detection']
 
-        # if dets is None:
         if dets is None:
             return [torch.Tensor()] * 4  # Warning, this is 4 copies of the same thing
 
@@ -548,16 +541,6 @@ class YolactWrapper(nn.Module):
         mask_scores = scores
         masks = masks.view(-1, h * w).cuda()
         boxes = boxes.cuda()
-
-        # if args.output_coco_json:
-        #     boxes = boxes.cpu().numpy()
-        #     masks = masks.view(-1, h, w).cpu().numpy()
-        #     for i in range(masks.shape[0]):
-        #         # Make sure that the bounding box actually makes sense and a mask was produced
-        #         if (boxes[i, 3] - boxes[i, 1]) * (boxes[i, 2] - boxes[i, 0]) > 0:
-        #             detections.add_bbox(image_id, classes[i], boxes[i, :], box_scores[i])
-        #             detections.add_mask(image_id, classes[i], masks[i, :, :], mask_scores[i])
-        #     return
 
         num_pred = len(classes)
         num_gt = len(gt_classes)

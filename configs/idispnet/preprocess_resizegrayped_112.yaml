@@ -1,8 +1,8 @@
 model:
   idispnet:
     preprocess:
-      output_dir: 'data/vob_roi_ra_gray_ped_112'
-      prediction_template: 'models/drcnn/kitti_object/resnet50resizegray_ped/inference/kittiobj_%s/predictions.pth'
+      output_dir: 'data/vob_roi_ra_gray_ped_from_coco_112'
+      prediction_template: 'models/drcnn/kitti_object/resnet50resizegray_ped_from_coco/inference/kittiobj_%s/predictions.pth'
       size: 112
 datasets:
   train: ("kittiobj_train",)

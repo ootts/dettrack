@@ -35,7 +35,7 @@ def train(cfg, local_rank, distributed, resume):
 
 def main():
     parser = default_argument_parser()
-    # parser.add_argument('--local_rank', default=0, type=int)
+    parser.add_argument('--local_rank', default=0, type=int)
     parser.add_argument('--init_method', default='env://', type=str)
     parser.add_argument('--no_archive', default=False, action='store_true')
     args = parser.parse_args()
@@ -88,10 +88,12 @@ def main():
     logger.info("Loaded configuration file {}".format(args.config_file))
     with open(args.config_file, "r") as cf:
         config_str = "\n" + cf.read()
-        logger.remove(2)
+        if get_rank() == 0:
+            logger.remove(2)
         logger.info(config_str)
-        format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
-        logger.add(sys.stdout, format=format, level="INFO")
+        if get_rank() == 0:
+            format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
+            logger.add(sys.stdout, format=format, level="INFO")
     logger.info("Running with config:\n{}".format(cfg))
     if cfg.deterministic is True or 'PYCHARM_HOSTED' in os.environ:
         deterministic()

@@ -362,17 +362,20 @@ class Pad(object):
         image, masks, boxes, labels = dps['image'], dps['masks'], dps['boxes'], dps['labels']
         im_h, im_w, depth = image.shape
 
+        dst_h = min(im_h, self.height)
+        dst_w = min(im_w, self.width)
+
         expand_image = np.zeros(
             (self.height, self.width, depth),
             dtype=image.dtype)
         expand_image[:, :, :] = self.mean
-        expand_image[:im_h, :im_w] = image
+        expand_image[:dst_h, :dst_w] = image[:dst_h, :dst_w]
 
         if self.pad_gt:
             expand_masks = np.zeros(
                 (masks.shape[0], self.height, self.width),
                 dtype=masks.dtype)
-            expand_masks[:, :im_h, :im_w] = masks
+            expand_masks[:, :dst_h, :dst_w] = masks[:, :dst_h, :dst_w]
             masks = expand_masks
         dps['image'] = expand_image
         dps['masks'] = masks

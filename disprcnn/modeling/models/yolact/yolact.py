@@ -283,6 +283,7 @@ class YolactWrapper(nn.Module):
                 if self.total_cfg.dbg:
                     img_numpy = self.prep_display(result, dps['image'][bi], h, w)
                     show(img_numpy)
+                    print()
                 elif self.total_cfg.model.meta_architecture == 'Yolact':
                     # et('begin')
                     gt = torch.cat([dps['target'][bi].bbox, dps['target'][bi].get_field('labels')[:, None]], dim=1)

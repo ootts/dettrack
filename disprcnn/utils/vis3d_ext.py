@@ -494,7 +494,7 @@ class Vis3D(vis3d.Vis3D):
         if not self.enable:
             return
         positions = tensor2ndarray(positions)
-
+        if positions.size == 0: return
         if eulers is None or extents is None:
             positions = np.asarray(positions).reshape(-1, 8, 3)
             corners = positions

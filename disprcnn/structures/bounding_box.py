@@ -552,7 +552,7 @@ class BoxList(object):
                     for c in contour:
                         c = c.squeeze(1)
                         plt.gca().add_patch(plt.Polygon(c, fill=False, color=colors[trackids[i] % len(colors)]))
-        if self.has_field("box3d"):
+        if self.has_field("box3d") and calib is not None:
             predcorners = self.get_field('box3d').convert('corners').bbox_3d.view(-1, 8, 3)
             corners = calib.corners3d_to_img_boxes(predcorners)[1].cpu().numpy()
             for ci, c in enumerate(corners):
@@ -615,6 +615,10 @@ class BoxList(object):
     @property
     def width(self):
         return self.size[0]
+
+    @property
+    def device(self):
+        return self.bbox.device
 
 
 if __name__ == "__main__":

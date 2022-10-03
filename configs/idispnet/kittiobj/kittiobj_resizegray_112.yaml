@@ -1,22 +1,22 @@
 model:
-  meta_architecture: "DRCNN"
-  drcnn:
-    yolact_on: True
-    pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_217500.pth"
-    ssim_coef: 0.18742550637410094
-    ssim_intercept: 4.41360665450609
-    ssim_std: 23.81503735
-    mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
-    idispnet_on: True
-  yolact:
-    num_classes: 2
-    class_names: [ 'car' ]
-    pretrained_backbone: ""
-  idispnet:
-    pretrained_model: "models/idispnet/kitti_resizegray_112/bestmodel.pth"
-    maxdisp: 24
-    mindisp: -24
-    input_size: 112
+meta_architecture: "DRCNN"
+drcnn:
+  yolact_on: True
+  pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_217500.pth"
+  ssim_coef: 0.18742550637410094
+  ssim_intercept: 4.41360665450609
+  ssim_std: 23.81503735
+  mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
+  idispnet_on: True
+yolact:
+  num_classes: 2
+  class_names: [ 'car' ]
+  pretrained_backbone: ""
+idispnet:
+  pretrained_model: "models/idispnet/kitti_resizegray_112/bestmodel.pth"
+  maxdisp: 24
+  mindisp: -24
+  input_size: 112
 datasets:
   train: ("kittiobj_train",)
   #  test: "kittiobj_val"

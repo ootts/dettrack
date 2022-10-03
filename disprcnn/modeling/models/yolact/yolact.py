@@ -447,7 +447,9 @@ class YolactWrapper(nn.Module):
         dets = dets['detection']
 
         if dets is None:
-            return [torch.Tensor()] * 4  # Warning, this is 4 copies of the same thing
+            # classes, scores, boxes, masks
+            return torch.empty([0, ]), torch.empty([0, ]), torch.empty([0, 4]), torch.empty([0, 1, 1])
+            # return [torch.Tensor([[]])] * 4  # Warning, this is 4 copies of the same thing
 
         if score_threshold > 0:
             keep = dets['score'] > score_threshold

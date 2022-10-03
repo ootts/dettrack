@@ -3,14 +3,15 @@ model:
   drcnn:
     yolact_on: True
     pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_217500.pth"
-    ssim_coef: 0.18742550637410094
-    ssim_intercept: 4.41360665450609
-    ssim_std: 23.81503735
+    ssim_coefs: [ 0.18742550637410094, ]
+    ssim_intercepts: [ 4.41360665450609, ]
+    ssim_stds: [ 23.81503735, ]
     mask_mode: 'poly' # for evaltime, use mask, for save predictions, use poly
     idispnet_on: True
     detector_3d_on: True
     detector_3d:
       shuffle_points: False
+      combine_2d3d: True
   yolact:
     num_classes: 2
     class_names: [ 'car' ]

@@ -124,9 +124,9 @@ def main():
         learner.to_distributed(get_rank())
     if cfg.solver.load != '':
         learner.load(cfg.solver.load)
-    if args.mode == 'train':
-        learner.fit(cfg.solver.num_epochs, cfg.solver.maxlr)
-    elif args.mode == 'train_oc':
+    # if args.mode == 'train':
+    #     learner.fit(cfg.solver.num_epochs, cfg.solver.maxlr)
+    if args.mode == 'train_oc':
         fit_one_cycle(learner, cfg.solver.num_epochs, cfg.solver.max_lr)
     elif args.mode == 'eval_train':
         evaluate(learner, 'train')

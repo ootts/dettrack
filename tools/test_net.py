@@ -101,9 +101,9 @@ def eval_all_ckpts(trainer):
             fieldnames = list(csv_results.keys())
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-        writer.writeheader()
-        for i in range(len(csv_results['fname'])):
-            writer.writerow({k: v[i] for k, v in csv_results.items()})
+            writer.writeheader()
+            for i in range(len(csv_results['fname'])):
+                writer.writerow({k: v[i] for k, v in csv_results.items()})
 
 
 def main():

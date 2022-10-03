@@ -549,6 +549,7 @@ class DRCNN(nn.Module):
             pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
             vis3d.add_point_cloud(pts_rect)
             vis3d.add_boxes(left_result.get_field('box3d').convert('corners').bbox_3d, name='pred')
+            vis3d.add_boxes(target.get_field('box3d').convert('corners').bbox_3d, name='gt')
         left_result.plot(dps['original_images']['left'][0], show=False, calib=calib, ignore_2d_when_3d_exists=True,
                          class_names=self.total_cfg.model.yolact.class_names,
                          draw_mask=False)

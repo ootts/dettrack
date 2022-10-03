@@ -19,16 +19,17 @@ class DisparityMapProcessor:
     def _forward_single_image(self, left_prediction: BoxList, right_prediction: BoxList) -> DisparityMap:
         left_bbox = left_prediction.bbox
         right_bbox = right_prediction.bbox
-        disparity_or_depth_preds = left_prediction.get_field('disparity')
-        mask_pred = left_prediction.get_map('masks').get_mask_tensor(squeeze=False)
         num_rois = len(left_bbox)
         disparity_maps_per_img = []
         if num_rois != 0:
+            mask_pred = left_prediction.get_map('masks').get_mask_tensor(squeeze=False)
+            disparity_or_depth_preds = left_prediction.get_field('disparity')
             for left_roi, right_roi, disp_or_depth_roi, mask in zip(left_bbox, right_bbox,
                                                                     disparity_or_depth_preds, mask_pred):
                 x1, y1, x2, y2 = expand_box_to_integer(left_roi.tolist())
                 x1p, _, x2p, _ = expand_box_to_integer(right_roi.tolist())
-                depth_map_per_roi = torch.zeros((left_prediction.height, left_prediction.width)).cuda()
+                depth_map_per_roi = torch.zeros((left_prediction.height, left_prediction.width)).to(
+                    left_prediction.device)
                 disparity_map_per_roi = torch.zeros_like(depth_map_per_roi)
                 disp_roi = DisparityMap(disp_or_depth_roi).resize(
                     (max(x2 - x1, x2p - x1p), y2 - y1),
@@ -37,7 +38,7 @@ class DisparityMapProcessor:
                     (0, 0, x2 - x1, y2 - y1)).data
                 disp_roi = disp_roi + x1 - x1p
                 disparity_map_per_roi[y1:y2, x1:x2] = disp_roi
-                disparity_map_per_roi = disparity_map_per_roi * mask.float().cuda()
+                disparity_map_per_roi = disparity_map_per_roi * mask.float().to(left_prediction.device)
                 disparity_maps_per_img.append(disparity_map_per_roi)
         if len(disparity_maps_per_img) != 0:
             disparity_maps_per_img = torch.stack(disparity_maps_per_img).sum(dim=0)

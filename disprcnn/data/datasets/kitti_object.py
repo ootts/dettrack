@@ -114,6 +114,9 @@ class KITTIObjectDataset(torch.utils.data.Dataset):
         if self.cfg.load_lidar:
             lidar = self.get_lidar(index)
             dps['lidar'] = lidar
+        info = self.get_img_info(index)
+        dps['height'] = info['height']
+        dps['width'] = info['width']
         return dps
 
     def get_image(self, index):

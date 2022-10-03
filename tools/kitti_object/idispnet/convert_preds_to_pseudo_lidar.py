@@ -17,10 +17,11 @@ from disprcnn.engine.defaults import default_argument_parser
 from disprcnn.data.build import make_data_loader
 
 parser = default_argument_parser()
+parser.add_argument("--output_dir", default="data/disprcnn_112/pseudo_lidar/training/velodyne")
 args = parser.parse_args()
-args.config_file = 'configs/idispnet/kittiobj/kittiobj_resizegray_112.yaml'
+# args.config_file = 'configs/idispnet/kittiobj/kittiobj_resizegray_112.yaml'
 cfg = setup(args, freeze=False)
-cfg.dbg = False
+# cfg.dbg = False
 
 ds = make_data_loader(cfg, False).dataset
 pred_path = osp.join(cfg.output_dir, 'inference', cfg.datasets.test, 'predictions.pth')
@@ -28,7 +29,7 @@ preds = torch.load(pred_path, 'cpu')
 dmp = DisparityMapProcessor()
 assert len(preds) == len(ds)
 
-output_dir = 'data/disprcnn_112/pseudo_lidar/training/velodyne'
+output_dir = args.output_dir
 os.makedirs(output_dir, exist_ok=True)
 
 vis3d = Vis3D(
@@ -66,8 +67,13 @@ def process(i):
 
 
 def main():
-    with Pool() as p:
-        results = list(tqdm.tqdm(p.imap(process, range(len(preds))), total=len(preds)))
+    if 'PYCHARM_HOSTED' in os.environ:
+        for i in tqdm.trange(len(preds)):
+            process(i)
+            print()
+    else:
+        with Pool() as p:
+            results = list(tqdm.tqdm(p.imap(process, range(len(preds))), total=len(preds)))
 
 
 if __name__ == '__main__':

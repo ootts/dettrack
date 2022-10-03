@@ -1,0 +1,21 @@
+model:
+  idispnet:
+    maxdisp: 24
+    mindisp: -24
+    input_size: 112
+
+datasets:
+  train: ("kittiroi_train",)
+  test: "kittiroi_val"
+dataset:
+  kittiroi:
+    root: 'data/vob_roi_ra_gray_ped_from_coco_112'
+    maxdisp: 24
+    mindisp: -24
+solver:
+  max_lr: 0.01
+  batch_size: 12
+  num_epochs: 100
+  save_every: False
+dataloader:
+  num_workers: 8

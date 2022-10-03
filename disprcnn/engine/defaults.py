@@ -10,7 +10,7 @@ from disprcnn.utils.miscellaneous import save_config
 def default_argument_parser(add_help=True):
     parser = argparse.ArgumentParser(add_help=add_help)
     parser.add_argument("--config-file", '-c', default="", metavar="FILE", help="path to config file")
-    # parser.add_argument("--mode", default="train", choices=['train', 'train_oc', 'eval', 'findlr'])
+    parser.add_argument("--mode", default="train", choices=['train', 'train_oc', 'eval', 'findlr'])
     parser.add_argument(
         "--resume",
         action="store_true",

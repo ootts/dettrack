@@ -93,7 +93,7 @@ def load_pb11(sources,
         s = str(s)
         if ".cu" in s or ".cu.cc" in s:
             assert cuda is True, "cuda must be true if contain cuda file"
-            cmds.append(Nvcc(s, out(s), arch, includes=includes))
+            cmds.append(Nvcc(s, out(s), arch, 'c++14', includes=includes))
             outs.append(out(s))
         else:
             main_sources.append(s)
@@ -104,10 +104,10 @@ def load_pb11(sources,
     cmd_groups.append(cmds)
     if cuda:
         cmd_groups.append(
-            [Pybind11CUDALink(outs + main_sources, target, includes=includes)])
+            [Pybind11CUDALink(outs + main_sources, target, "c++14", includes=includes)])
     else:
         cmd_groups.append(
-            [Pybind11Link(outs + main_sources, target, includes=includes)])
+            [Pybind11Link(outs + main_sources, target, "c++14", includes=includes)])
     for cmds in cmd_groups:
         compile_libraries(
             cmds, cwd, num_workers=num_workers, compiler=compiler)

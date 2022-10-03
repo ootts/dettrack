@@ -16,6 +16,7 @@ except:
         current_dir / "nms.so",
         current_dir,
         # includes=["/raid/linghao/project_data/dettrack/external/boost_1_65_1/boost"],
+        num_workers=0,
         cuda=True)
     from disprcnn.utils.ppp_utils.non_max_suppression.nms import (
         non_max_suppression_cpu, rotate_non_max_suppression_cpu)

@@ -16,8 +16,13 @@ from disprcnn.utils.comm import synchronize, get_rank
 from disprcnn.utils.logger import setup_logger
 from disprcnn.utils.os_utils import archive_runs, make_source_code_snapshot, deterministic
 from disprcnn.utils.vis3d_ext import Vis3D
+from numba.core.errors import NumbaWarning
+import warnings
 
-warnings.filterwarnings('once')
+# warnings.filterwarnings('once')
+warnings.simplefilter('ignore', category=NumbaWarning)
+# warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
+
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 

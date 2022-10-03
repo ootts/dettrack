@@ -41,9 +41,7 @@ sh build_and_install.sh
 3. Export environment variables
 ```bash
 export CUDA_HOME=/usr/local/cuda-10.2
-export NUMBAPRO_CUDA_DRIVER=/usr/lib/x86_64-linux-gnu/libcuda.so
-export NUMBAPRO_LIBDEVICE=/usr/local/cuda-10.2/nvvm/libdevice
-export NUMBAPRO_NVVM=/usr/local/cuda-10.2/nvvm/lib64/libnvvm.so
+export PATH=/usr/local/cuda-10.2/bin:$PATH
 ```
 
 1. Run inference and visualization.

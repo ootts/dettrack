@@ -313,10 +313,13 @@ def build_target_assigner(target_assigner_config, box_coder):
     #     raise ValueError('input_reader_config not of type '
     #                      'input_reader_pb2.InputReader.')
     anchor_cfg = target_assigner_config.anchor_generators
-    anchor_generators = [build_anchor_generator(anchor_cfg)]
-    # for a_cfg in anchor_cfg:
-    #     anchor_generator =
-    #     anchor_generators.append(anchor_generator)
+    anchor_cfgs = target_assigner_config.anchor_generators_mulclass
+    if len(anchor_cfgs) == 0:
+        anchor_generators = [build_anchor_generator(anchor_cfg)]
+    else:
+        anchor_generators = []
+        for anchor_cfg in anchor_cfgs:
+            anchor_generators.append(build_anchor_generator(anchor_cfg))
     similarity_calc = build_similarity_calculator()
     # positive_fraction = target_assigner_config.sample_positive_fraction
     # if positive_fraction < 0:

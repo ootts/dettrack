@@ -9,7 +9,7 @@ class AnchorGeneratorStride:
                  anchor_strides=[0.4, 0.4, 1.0],
                  anchor_offsets=[0.2, -39.8, -1.78],
                  rotations=[0, np.pi / 2],
-                 class_id=None,
+                 # class_id=None,
                  match_threshold=-1,
                  unmatch_threshold=-1,
                  dtype=np.float32):
@@ -18,13 +18,13 @@ class AnchorGeneratorStride:
         self._anchor_offsets = anchor_offsets
         self._rotations = rotations
         self._dtype = dtype
-        self._class_id = class_id
+        # self._class_id = class_id
         self._match_threshold = match_threshold
         self._unmatch_threshold = unmatch_threshold
 
-    @property
-    def class_id(self):
-        return self._class_id
+    # @property
+    # def class_id(self):
+    #     return self._class_id
 
     @property
     def match_threshold(self):
@@ -48,11 +48,12 @@ class AnchorGeneratorStride:
 
 def build_anchor_generator(config):
     ag = AnchorGeneratorStride(
-        sizes=list(config.sizes),
-        anchor_strides=list(config.strides),
-        anchor_offsets=list(config.offsets),
-        rotations=list(config.rotations),
-        match_threshold=config.matched_threshold,
-        unmatch_threshold=config.unmatched_threshold,
-        class_id=config.class_name)
+        sizes=list(config['sizes']),
+        anchor_strides=list(config['strides']),
+        anchor_offsets=list(config['offsets']),
+        rotations=list(config['rotations']),
+        match_threshold=config['matched_threshold'],
+        unmatch_threshold=config['unmatched_threshold'],
+        # class_id=config['class_name']
+    )
     return ag

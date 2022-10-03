@@ -234,7 +234,7 @@ class PointPillars(nn.Module):
                 box3d_vis = box3d[vis_keep]
                 if len(box3d_vis) > 0:
                     vis3d.add_boxes(box3d_vis.convert("corners").bbox_3d.reshape(-1, 8, 3), name='pred')
-                labels = load_label_2(KITTIROOT, 'training', imgid, ['Car'])
+                labels = load_label_2(KITTIROOT, 'training', imgid, ['Pedestrian'])
                 gt_box3d = []
                 for label in labels:
                     gt_box3d.append([label.x, label.y, label.z, label.h, label.w, label.l, label.ry])
@@ -290,7 +290,7 @@ class PointPillars(nn.Module):
                 cls_preds = cls_preds[a_mask]
             # if self.use_direction_classifier:
             if a_mask is not None:
-                dir_preds = dir_preds[a_mask]
+                dir_preds = dir_preds[a_mask.bool()]
             # print(dir_preds.shape)
             dir_labels = torch.max(dir_preds, dim=-1)[1]
             if self.encode_background_as_zeros:
@@ -410,9 +410,8 @@ class PointPillars(nn.Module):
                 dir_labels = selected_dir_labels
                 opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.byte()
                 box_preds[..., -1] += torch.where(
-                    opp_labels,
-                    torch.tensor(np.pi).type_as(box_preds),
-                    torch.tensor(0.0).type_as(box_preds))
+                    opp_labels, torch.tensor(np.pi).cuda().float(),
+                    torch.tensor(0.0).cuda().float())
                 # box_preds[..., -1] += (
                 #     ~(dir_labels.byte())).type_as(box_preds) * np.pi
                 final_box_preds = box_preds

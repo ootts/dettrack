@@ -167,8 +167,8 @@ class Calib:
         A = A.t()
         A, b = A.split([3, 1], dim=1)  # 3,3 3,1
         pc = pc.t()  # 3,N
-        pc = pc - b
-        velo = (torch.inverse(A) @ pc).t()
+        pc = pc - b.to(pc.device)
+        velo = (torch.inverse(A).to(pc.device) @ pc).t()
         return velo
 
     def rect_to_cam2(self, pts):

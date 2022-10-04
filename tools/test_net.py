@@ -2,9 +2,11 @@ import csv
 import os
 import os.path as osp
 import sys
+import warnings
 
 import torch
 import torch.multiprocessing
+from numba import NumbaWarning, NumbaDeprecationWarning
 
 from disprcnn.config import cfg
 from disprcnn.engine.defaults import default_argument_parser
@@ -18,6 +20,8 @@ from disprcnn.utils.vis3d_ext import Vis3D
 from disprcnn.visualizers import build_visualizer
 
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
+warnings.simplefilter('ignore', category=NumbaWarning)
+warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
 
 
 def get_preds(trainer):
@@ -68,16 +72,16 @@ def eval_all_ckpts(trainer):
     csv_results = {'fname': []}
     for fname in sorted(os.listdir(ckpt_dir)):
         if isckpt(fname) and int(fname[-10:-4]) > cfg.test.eval_all_min:
-
             cfg.defrost()
-            # setattr(cfg, cfg.test.eval_all_attr, osp.join(ckpt_dir, fname))
-            setcfg(cfg, cfg.test.eval_all_attr, osp.join(ckpt_dir, fname))
-            # cfg.solver.load_model =
-            cfg.solver.load = ''
-            cfg.freeze()
-            print("CKPT= ", cfg.model.drcnn.pretrained_yolact)
 
-            trainer.rebuild_model()
+            if cfg.test.eval_all_attr != 'solver.load':
+                setcfg(cfg, cfg.test.eval_all_attr, osp.join(ckpt_dir, fname))
+                cfg.solver.load = ''
+                trainer.rebuild_model()
+            else:
+                cfg.solver.load = fname.rstrip(".pth")
+                trainer.resume()
+            cfg.freeze()
             preds = get_preds(trainer)
             if get_rank() == 0:
                 all_metrics = {}

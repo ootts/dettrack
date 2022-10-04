@@ -10,6 +10,7 @@ model:
     idispnet_on: True
     detector_3d_on: True
     detector_3d:
+      feature_map_size: [ 1, 248, 296 ]
       shuffle_points: False
       combine_2d3d: True
   yolact:
@@ -23,7 +24,22 @@ model:
     input_size: 112
   pointpillars:
     num_point_features: 4
-    pretrained_model: "models/pointpillars/disprcnn_ped_112/train/model_epoch_000192.pth"
+    pretrained_model: "models/pointpillars/disprcnn_ped_112/train/model_epoch_000020.pth"
+    vis_threshold: 0.5
+    rpn:
+      layer_strides: [ 1, 2, 2 ]
+    post_center_limit_range: [ 0, -19.84, -2.5, 47.36, 19.84, 0.5 ]
+    target_assigner:
+      anchor_generators:
+        sizes: [ 0.6, 0.8, 1.73 ] # wlh
+        strides: [ 0.16, 0.16, 0.0 ]
+        offsets: [ 0.08, -19.76, -1.465 ]
+        rotations: [ 0, 1.57 ] # 0, pi/2
+        matched_threshold: 0.5
+        unmatched_threshold: 0.35
+voxel_generator:
+  point_cloud_range: [ 0, -19.84, -2.5, 47.36, 19.84, 0.5 ]
+  voxel_size: [ 0.16, 0.16, 3 ]
 datasets:
   train: ("kittiobj_train",)
   test: "kittiobj_val"

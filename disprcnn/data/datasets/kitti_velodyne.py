@@ -15,6 +15,7 @@ from disprcnn.utils.ppp_utils.preprocess import DataBasePreprocessor
 from disprcnn.utils.ppp_utils import preprocess as prep, kitti_common as kitti
 from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
 from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
+from disprcnn.utils.vis3d_ext import Vis3D
 
 
 class KittiVelodyneDataset(Dataset):
@@ -1585,3 +1586,31 @@ def build_db_preprocess(config):
         return prep.DBFilterByMinNumPoint({config["key"]: config["value"]})
     else:
         raise ValueError("unknown database prep type")
+
+
+def main():
+    from disprcnn.engine.defaults import setup
+    from disprcnn.engine.defaults import default_argument_parser
+    from disprcnn.data import make_data_loader
+    parser = default_argument_parser()
+    args = parser.parse_args()
+    args.config_file = 'configs/pointpillars/disprcnn_ped_112/train.yaml'
+    cfg = setup(args)
+
+    ds = make_data_loader(cfg, is_train=False).dataset
+
+    d = ds[6]
+    v_path = 'data/disprcnn_ped_112/kitti_second/training/velodyne_reduced/000015.bin'
+    points = np.fromfile(str(v_path), dtype=np.float32, count=-1).reshape([-1, 4])
+    vis3d = Vis3D(
+        xyz_pattern=('x', 'y', 'z'),
+        out_folder="dbg",
+        sequence="kitti_velodyne_loader",
+        # auto_increase=,
+        # enable=,
+    )
+    vis3d.add_point_cloud(points[:, :3])
+
+
+if __name__ == '__main__':
+    main()

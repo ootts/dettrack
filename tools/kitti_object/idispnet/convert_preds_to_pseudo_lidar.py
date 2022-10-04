@@ -62,8 +62,9 @@ def process(i):
     lidar = load_velodyne('data/kitti', 'training', imgid)
     vis3d.add_point_cloud(lidar[:, :3], name='lidar')
     vis3d.add_point_cloud(calib.lidar_to_rect(lidar[:, :3]), name='pts_rect_gt')
-    with open(osp.join(output_dir, f"{imgid:06d}.bin"), 'w') as f:
-        pts_lidar.tofile(f)
+    print('no save!!')
+    # with open(osp.join(output_dir, f"{imgid:06d}.bin"), 'w') as f:
+    #     pts_lidar.tofile(f)
 
 
 def main():

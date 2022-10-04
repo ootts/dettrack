@@ -7,6 +7,7 @@ import numba.cuda
 import numpy as np
 
 from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
+from disprcnn.structures.calib import Calib
 from disprcnn.utils.pytorch_ssim import ssim
 import torch
 from tensorboardX import SummaryWriter
@@ -414,13 +415,16 @@ class DRCNN(nn.Module):
         evaltime('disp pp')
         target = dps['targets']['left'][0]
         calib = target.get_field('calib').calib
+        calib = Calib(calib, (calib.width, calib.height))
         pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
         if self.dbg: vis3d.add_point_cloud(pts_rect, name='pts_rect')
         keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
                (pts_rect[:, 1] > -3) & (pts_rect[:, 1] < 3) \
                & (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
+        # keep = (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
+        pts_rect = pts_rect[keep]
         evaltime('disp pp 0.1')
-        if self.dbg: vis3d.add_point_cloud(pts_rect[keep], name='pts_rect_keep')
+        if self.dbg: vis3d.add_point_cloud(pts_rect, name='pts_rect_keep')
         evaltime('disp pp 0.2')
         points = calib.rect_to_lidar(pts_rect)
         evaltime('disp pp 0.3')

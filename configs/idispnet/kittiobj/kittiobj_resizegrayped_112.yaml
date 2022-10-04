@@ -10,7 +10,7 @@ model:
     idispnet_on: True
   yolact:
     num_classes: 2
-    class_names: [ pedestrian' ]
+    class_names: [ 'pedestrian' ]
     pretrained_backbone: ""
   idispnet:
     pretrained_model: "models/idispnet/kitti_resizegrayped_112/bestmodel.pth"
@@ -19,8 +19,8 @@ model:
     input_size: 112
 datasets:
   train: ("kittiobj_train",)
-  #  test: "kittiobj_val"
-  test: "kittiobj_train"
+  test: "kittiobj_val"
+  #  test: "kittiobj_train"
   #  test: "kittiobj_test"
   #  test: "kittikins_valmini"
   #  test: "kittitracking_valmini"

@@ -130,6 +130,7 @@ class PointPillars(nn.Module):
         # coors: [num_voxels, 4]
         voxel_features = self.voxel_feature_extractor(voxels, num_points, coors)
         spatial_features = self.middle_feature_extractor(voxel_features, coors, batch_size_dev)
+        # print('global step', dps['global_step'])
         preds_dict = self.rpn(spatial_features)
         box_preds = preds_dict["box_preds"]
         cls_preds = preds_dict["cls_preds"]
@@ -241,6 +242,7 @@ class PointPillars(nn.Module):
                 if len(gt_box3d) > 0:
                     gt_box3d = Box3DList(gt_box3d, 'xyzhwl_ry')
                     vis3d.add_boxes(gt_box3d.convert('corners').bbox_3d.reshape(-1, 8, 3), name='gt')
+                    print()
                 print()
             output = {'left': result, 'right': result}
             return output, {}
@@ -286,8 +288,8 @@ class PointPillars(nn.Module):
                 batch_Trv2c, batch_P2, batch_imgidx, batch_anchors_mask
         ):
             if a_mask is not None:
-                box_preds = box_preds[a_mask]
-                cls_preds = cls_preds[a_mask]
+                box_preds = box_preds[a_mask.bool()]
+                cls_preds = cls_preds[a_mask.bool()]
             # if self.use_direction_classifier:
             if a_mask is not None:
                 dir_preds = dir_preds[a_mask.bool()]
@@ -410,7 +412,7 @@ class PointPillars(nn.Module):
                 dir_labels = selected_dir_labels
                 opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.byte()
                 box_preds[..., -1] += torch.where(
-                    opp_labels, torch.tensor(np.pi).cuda().float(),
+                    opp_labels.bool(), torch.tensor(np.pi).cuda().float(),
                     torch.tensor(0.0).cuda().float())
                 # box_preds[..., -1] += (
                 #     ~(dir_labels.byte())).type_as(box_preds) * np.pi

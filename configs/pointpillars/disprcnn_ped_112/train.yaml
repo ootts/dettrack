@@ -46,22 +46,25 @@ dataset:
     root_path: 'data/disprcnn_ped_112/kitti_second'
     db_sampler:
       database_info_path: "data/disprcnn_ped_112/kitti_second/kitti_dbinfos_train.pkl"
-#      database_prep_steps:
-#        - name: "filter_by_min_num_points"
-#          key: "Car"
-#          value: 5
-#        - name: filter_by_difficulty
-#          removed_difficulties: [ -1 ]
-#      sample_groups:
-#        - key: "Car"
-#          value: 15
+      database_prep_steps:
+        - name: "filter_by_min_num_points"
+          key: "Pedestrian"
+          value: 5
+        - name: filter_by_difficulty
+          removed_difficulties: [ -1 ]
+      sample_groups:
+        - key: "Pedestrian"
+          value: 8
+  kitti_object:
+    classes: [ "__background__", "pedestrian" ]
 test:
   do_visualization: False # todo
   visualizer: ""
   evaluators: [ "kittiobj" ]
   batch_size: 1
   save_predictions: True
-#  force_recompute: False
+#  eval_all: True
+#  eval_all_min: 5
 
 dataloader:
   num_workers: 2

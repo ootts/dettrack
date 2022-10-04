@@ -16,14 +16,14 @@ from .preprocess import BatchSampler
 class DataBaseSamplerV2:
     def __init__(self, db_infos, groups, db_prepor=None,
                  rate=1.0, global_rot_range=None):
-        for k, v in db_infos.items():
-            print(f"load {len(v)} {k} database infos")
+        # for k, v in db_infos.items():
+        #     print(f"load {len(v)} {k} database infos")
 
         if db_prepor is not None:
             db_infos = db_prepor(db_infos)
-            print("After filter database:")
-            for k, v in db_infos.items():
-                print(f"load {len(v)} {k} database infos")
+            # print("After filter database:")
+            # for k, v in db_infos.items():
+            #     print(f"load {len(v)} {k} database infos")
 
         self.db_infos = db_infos
         self._rate = rate

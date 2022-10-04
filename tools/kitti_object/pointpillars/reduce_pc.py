@@ -42,8 +42,9 @@ def _create_reduced_point_cloud(data_path,
         # else:
         if back:
             save_filename += "_back"
-        with open(save_filename, 'w') as f:
-            points_v.tofile(f)
+        print("NO SAVE!")
+        # with open(save_filename, 'w') as f:
+        #     points_v.tofile(f)
 
 
 def create_reduced_point_cloud(data_path,
@@ -58,8 +59,8 @@ def create_reduced_point_cloud(data_path,
         val_info_path = pathlib.Path(data_path) / 'kitti_infos_val.pkl'
     if test_info_path is None:
         test_info_path = pathlib.Path(data_path) / 'kitti_infos_test.pkl'
-
-    _create_reduced_point_cloud(data_path, train_info_path, save_path)
+    print('skip train!')
+    # _create_reduced_point_cloud(data_path, train_info_path, save_path)
     _create_reduced_point_cloud(data_path, val_info_path, save_path)
     _create_reduced_point_cloud(data_path, test_info_path, save_path)
     if with_back:

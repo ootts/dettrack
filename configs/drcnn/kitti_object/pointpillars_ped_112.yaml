@@ -12,7 +12,7 @@ model:
     detector_3d:
       feature_map_size: [ 1, 248, 296 ]
       shuffle_points: False
-      combine_2d3d: True
+      combine_2d3d: False # False when eval, True when vis
   yolact:
     num_classes: 2
     class_names: [ 'pedestrian' ]
@@ -24,7 +24,7 @@ model:
     input_size: 112
   pointpillars:
     num_point_features: 4
-    pretrained_model: "models/pointpillars/disprcnn_ped_112/train/model_epoch_000020.pth"
+    pretrained_model: "models/pointpillars/disprcnn_ped_112/train/model_epoch_000030.pth"
     vis_threshold: 0.5
     rpn:
       layer_strides: [ 1, 2, 2 ]

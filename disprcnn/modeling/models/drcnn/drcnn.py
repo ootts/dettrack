@@ -232,6 +232,7 @@ class DRCNN(nn.Module):
                         left_result.add_field('box3d', box3d)
                     else:
                         iou = boxlist_iou(left_result, pp_output['left'])
+
                         maxiou, maxiouidx = iou.max(1)
                         keep = maxiou > 0.5
                         box3d = pp_output['left'].get_field('box3d')[maxiouidx]

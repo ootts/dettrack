@@ -1595,12 +1595,13 @@ def main():
     parser = default_argument_parser()
     args = parser.parse_args()
     args.config_file = 'configs/pointpillars/disprcnn_ped_112/train.yaml'
-    cfg = setup(args)
+    cfg = setup(args, freeze=False)
+    cfg.dataset.kitti_velodyne.shuffle_points = False
 
     ds = make_data_loader(cfg, is_train=False).dataset
 
-    d = ds[6]
-    v_path = 'data/disprcnn_ped_112/kitti_second/training/velodyne_reduced/000015.bin'
+    d = ds[14]
+    v_path = 'data/disprcnn_ped_112/kitti_second/training/velodyne_reduced/000028.bin'
     points = np.fromfile(str(v_path), dtype=np.float32, count=-1).reshape([-1, 4])
     vis3d = Vis3D(
         xyz_pattern=('x', 'y', 'z'),

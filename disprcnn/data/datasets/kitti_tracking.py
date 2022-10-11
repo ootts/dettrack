@@ -1,3 +1,4 @@
+import tqdm
 import glob
 import time
 
@@ -12,7 +13,6 @@ from PIL import Image
 from disprcnn.structures.calib import Calib
 
 from disprcnn.structures.bounding_box import BoxList
-from tqdm import tqdm
 
 
 class KITTITrackingDataset(torch.utils.data.Dataset):
@@ -27,7 +27,6 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
     NUM_TESTING = -1  # todo: not used
 
     def __init__(self, cfg, root, split, transforms=None, remove_ignore=True, ds_len=-1):
-        # todo: fix shape_prior_base.
         """
         :param root: '.../kitti/
         :param split: ['train','val']
@@ -48,6 +47,9 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
         elif split == 'val':
             # self.seqs = [1, 6, 8, 10, 12, 13, 14, 15, 16, 18, 19]
             self.seqs = [15, 13, 1, 6, 8, 10, 12, 14, 16, 18, 19]
+            # ped: 13 15 16 19
+        elif split == 'valped':
+            self.seqs = [15, 13, 16, 19]
         else:
             raise NotImplementedError()
 
@@ -88,14 +90,11 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
                 'width': width,
                 'index': index
             }
-        elif self.split == 'val':
+        elif self.split in ['val', 'valped']:
             seq, imgid = self.pairs[index]
             img = self.get_image(seq, imgid)
-            time.sleep(0.5)
             height, width, _ = img.shape
 
-            # targets = self.get_ground_truth(seq, imgid)
-            # targets = targets[targets.get_field('labels') == 1]  # remove not cars
             targets = BoxList(torch.empty([0, 4]), (1, 1))
             assert self.transforms is not None
 
@@ -132,7 +131,7 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
             nimgs = len(os.listdir(osp.join(self.root, 'tracking', split, 'image_02', f"{seq:04d}")))
             if self.split == 'train':
                 pairs = list(zip([seq] * (nimgs - 1), range(0, nimgs - 1), range(1, nimgs)))
-            elif self.split == 'val':
+            elif self.split in ['val', 'valped']:
                 pairs = list(zip([seq] * nimgs, range(0, nimgs)))
             else:
                 raise NotImplementedError()
@@ -305,8 +304,17 @@ def is_testing_split(split):
 
 
 def main():
-    ds = KITTITrackingDataset(None, 'data/kitti', 'val', None, )
-    d = ds[0]
+    from disprcnn.engine.defaults import setup
+    from disprcnn.engine.defaults import default_argument_parser
+    from disprcnn.data import make_data_loader
+    parser = default_argument_parser()
+    args = parser.parse_args()
+    args.config_file = 'configs/yolact_tracking/kitti/resnet50b10resizegray_ped_from_coco.yaml'
+    cfg = setup(args)
+    ds = make_data_loader(cfg, is_train=False).dataset
+    # ds = KITTITrackingDataset(cfg, 'data/kitti', 'val', None, )
+    for d in tqdm.tqdm(ds):
+        print()
 
 
 if __name__ == '__main__':

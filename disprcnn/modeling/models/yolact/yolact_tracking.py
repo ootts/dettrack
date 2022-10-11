@@ -169,7 +169,7 @@ class YolactTracking(nn.Module):
         self.evaltime('roi align')
         ##############  ↓ Step : forward track head  ↓  ##############
         ref_x = roi_features0
-        if len(ref_x) == 0:
+        if len(ref_x) == 0 or len(roi_features1) == 0:
             output = {'metrics': {'acc': torch.tensor([0.0], requires_grad=True)}}
             loss_dict = {'loss_match': torch.tensor([0.0], requires_grad=True)}
             return output, loss_dict
@@ -312,6 +312,7 @@ class YolactTracking(nn.Module):
             img = untsfm(dps['image'][0], width, height)
             plt.imshow(img)
             colors = list(mcolors.BASE_COLORS.keys())
+            colors.remove('k')
             for i, box in enumerate(pred.convert('xywh').bbox.tolist()):
                 x, y, w, h = box
                 score = pred.get_field('scores').tolist()[i]

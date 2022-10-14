@@ -1,3 +1,5 @@
+from multiprocessing import Pool
+
 import tqdm
 import glob
 import os
@@ -51,6 +53,24 @@ def stereo_rectify(raw_dir):
     return P1, P2, map1x, map1y, map2x, map2y
 
 
+def process_img(data):
+    left_path, right_path, map1x, map1y, map2x, map2y, left_out_path, right_out_path = data
+    left = imageio.imread(left_path)
+    right = imageio.imread(right_path)
+    left_remap = cv2.remap(left, map1x, map1y,
+                           interpolation=cv2.INTER_NEAREST,
+                           borderMode=cv2.BORDER_CONSTANT,
+                           borderValue=(0, 0, 0, 0))
+    right_remap = cv2.remap(right, map2x, map2y,
+                            interpolation=cv2.INTER_NEAREST,
+                            borderMode=cv2.BORDER_CONSTANT,
+                            borderValue=(0, 0, 0, 0))
+    # stereo_images_grid(left, right, title='before')
+    # stereo_images_grid(left_remap, right_remap, title='after')
+    imageio.imwrite(left_out_path, left_remap)
+    imageio.imwrite(right_out_path, right_remap)
+
+
 def main():
     raw_dir = "data/real/raw"
     processed_dir = 'data/real/processed'
@@ -72,22 +92,20 @@ def main():
         s += "R_rect 9.999239000000e-01 9.837760000000e-03 -7.445048000000e-03 -9.869795000000e-03 9.999421000000e-01 -4.278459000000e-03 7.402527000000e-03 4.351614000000e-03 9.999631000000e-01\nTr_velo_cam 7.533745000000e-03 -9.999714000000e-01 -6.166020000000e-04 -4.069766000000e-03 1.480249000000e-02 7.280733000000e-04 -9.998902000000e-01 -7.631618000000e-02 9.998621000000e-01 7.523790000000e-03 1.480755000000e-02 -2.717806000000e-01\nTr_imu_velo 9.999976000000e-01 7.553071000000e-04 -2.035826000000e-03 -8.086759000000e-01 -7.854027000000e-04 9.998898000000e-01 -1.482298000000e-02 3.195559000000e-01 2.024406000000e-03 1.482454000000e-02 9.998881000000e-01 -7.997231000000e-01\n"
         f.write(s)
     imgid = 0
+    datas = []
     for frameid in tqdm.tqdm(frameids):
-        left = imageio.imread(osp.join(raw_dir, "left", frameid + ".png"))
-        right = imageio.imread(osp.join(raw_dir, "right", frameid + ".png"))
-        left_remap = cv2.remap(left, map1x, map1y,
-                               interpolation=cv2.INTER_NEAREST,
-                               borderMode=cv2.BORDER_CONSTANT,
-                               borderValue=(0, 0, 0, 0))
-        right_remap = cv2.remap(right, map2x, map2y,
-                                interpolation=cv2.INTER_NEAREST,
-                                borderMode=cv2.BORDER_CONSTANT,
-                                borderValue=(0, 0, 0, 0))
+        left_path = osp.join(raw_dir, "left", frameid + ".png")
+        right_path = osp.join(raw_dir, "right", frameid + ".png")
+        left_out_path = osp.join(processed_dir, f"image_02/{seq_id}/{imgid:06d}.png")
+        right_out_path = osp.join(processed_dir, f"image_03/{seq_id}/{imgid:06d}.png")
+        data = [left_path, right_path, map1x, map1y, map2x, map2y, left_out_path, right_out_path]
+        datas.append(data)
         # stereo_images_grid(left, right, title='before')
         # stereo_images_grid(left_remap, right_remap, title='after')
-        imageio.imwrite(osp.join(processed_dir, f"image_02/{seq_id}/{imgid}.png"), left_remap)
-        imageio.imwrite(osp.join(processed_dir, f"image_03/{seq_id}/{imgid}.png"), right_remap)
         imgid += 1
+
+    with Pool() as p:
+        results = list(tqdm.tqdm(p.imap(process_img, datas), total=len(datas)))
 
 
 if __name__ == '__main__':

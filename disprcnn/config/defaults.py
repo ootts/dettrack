@@ -314,6 +314,9 @@ _C.dataset.kitti_tracking.classes = ("__background__", "car", "dontcare")
 _C.dataset.kitti_tracking_stereo = CN()
 _C.dataset.kitti_tracking_stereo.use_gray = False
 
+_C.dataset.real_tracking_stereo = CN()
+_C.dataset.real_tracking_stereo.use_gray = False
+
 _C.dataset.kitti_velodyne = CN()
 _C.dataset.kitti_velodyne.without_reflectivity = False
 # _C.dataset.kitti_velodyne.out_size_factor = 2

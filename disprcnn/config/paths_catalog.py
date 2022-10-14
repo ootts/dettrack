@@ -29,6 +29,9 @@ class DatasetCatalog(object):
             return get_kittiroi(name)
         elif name.startswith("kittivelodyne"):
             return get_kittivelodyne(name)
+        elif name.startswith("realtrackingstereo"):
+            return get_realtrackingstereo(name)
+
         raise RuntimeError("Dataset not available: {}".format(name))
 
 
@@ -149,3 +152,16 @@ def get_kittiroi(name):
               'ds_len': ds_len
               }
     )
+
+
+def get_realtrackingstereo(name):
+    split = name.split("_")[1]
+    ds_len = -1
+    return dict(
+        factory='RealTrackingStereoDataset',
+        args={'root': 'data/real/processed',
+              'split': split,
+              'ds_len': ds_len
+              }
+    )
+

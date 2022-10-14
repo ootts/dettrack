@@ -6,3 +6,4 @@ from .kitti_roi_dataset_ra import KITTIRoiDatasetRA
 from .garykitti_kins import GrayKITTIKinsDataset
 from .kitti_velodyne import KittiVelodyneDataset
 from .kitti_tracking_stereo import KITTITrackingStereoDataset
+from .real_tracking_stereo import RealTrackingStereoDataset

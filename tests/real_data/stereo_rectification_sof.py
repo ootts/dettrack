@@ -1,13 +1,6 @@
 import cv2
-import glob
-import argparse
-import math
-from numpy import genfromtxt
-import matplotlib.pyplot as plt
 import numpy as np
-import os.path
-from scipy import ndimage
-import os
+
 from disprcnn.utils.plt_utils import stereo_images_grid
 
 left = cv2.imread('data/img1.jpg', cv2.IMREAD_UNCHANGED)

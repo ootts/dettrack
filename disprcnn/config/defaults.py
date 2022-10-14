@@ -293,6 +293,10 @@ _C.dataset.kitti_kins.use_gray = False
 _C.dataset.kitti_kins.classes = ("__background__", "car", "dontcare")
 _C.dataset.kitti_kins.remove_empty = False
 
+_C.dataset.real = CN()
+_C.dataset.real.use_gray = False
+_C.dataset.real.classes = ("__background__", "car", "dontcare")
+
 _C.dataset.kitti_object = CN()
 _C.dataset.kitti_object.filter_empty = False
 _C.dataset.kitti_object.offline_2d_predictions_path = ''

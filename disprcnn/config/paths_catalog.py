@@ -31,6 +31,8 @@ class DatasetCatalog(object):
             return get_kittivelodyne(name)
         elif name.startswith("realtrackingstereo"):
             return get_realtrackingstereo(name)
+        elif name.startswith("real"):
+            return get_real(name)
 
         raise RuntimeError("Dataset not available: {}".format(name))
 
@@ -165,3 +167,14 @@ def get_realtrackingstereo(name):
               }
     )
 
+
+def get_real(name):
+    split = name.split("_")[1]
+    ds_len = -1
+    return dict(
+        factory='RealDataset',
+        args={'root': 'data/real/processed/',
+              'split': split,
+              'ds_len': ds_len
+              }
+    )

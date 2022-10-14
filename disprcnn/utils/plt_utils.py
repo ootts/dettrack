@@ -326,3 +326,33 @@ COLORS = ((244, 67, 54),
           (121, 85, 72),
           (158, 158, 158),
           (96, 125, 139))
+
+
+def stereo_images_grid(img1, img2, title=None):
+    if len(img1.shape) == 2:
+        img1 = np.repeat(img1[:, :, None], 3, axis=-1)
+    if len(img2.shape) == 2:
+        img2 = np.repeat(img2[:, :, None], 3, axis=-1)
+    if img1.max() > 1:
+        img1 = img1 / 255.0
+    if img2.max() > 1:
+        img2 = img2 / 255.0
+
+    for line in range(0, int(img1.shape[0] / 20)):
+        c = COLORS[line % len(COLORS)]
+        img1[line * 20, :] = np.array(c) / 255.0
+        img2[line * 20, :] = np.array(c) / 255.0
+
+    if title is not None: plt.title(title)
+    plt.subplot(1, 2, 1)
+    plt.axis('off')
+    plt.imshow(img1)
+    plt.subplot(1, 2, 2)
+    plt.axis('off')
+    plt.imshow(img2)
+    plt.show()
+
+    if title is not None: plt.title(title)
+    plt.axis('off')
+    plt.imshow(img1 / 2 + img2 / 2)
+    plt.show()

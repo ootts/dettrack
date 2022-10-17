@@ -2,7 +2,7 @@ model:
   meta_architecture: "DRCNN"
   drcnn:
     yolact_on: True
-    pretrained_yolact: "models/yolact/kitti/resnet50resizegray/model_iteration_217500.pth"
+    pretrained_yolact: "models/yolact/kitti/resnet50_600x300_gray/model_iteration_117500.pth"
     ssim_coefs: [ 0.18742550637410094 ]
     ssim_intercepts: [ 4.41360665450609 ]
     ssim_stds: [ 23.81503735 ]
@@ -37,9 +37,8 @@ input:
   transforms:
     - name: ConvertFromInts
     - name: Resize
-      max_size: 546
-      # max_size: 720
-      preserve_aspect_ratio: True
+      max_size: [ 600, 300 ]
+      preserve_aspect_ratio: False
       discard_box_width: 0.007272727272727273
       discard_box_height: 0.007272727272727273
       resize_gt: False
@@ -58,12 +57,16 @@ dataset:
     classes: ("__background__","car")
 
 test:
-  do_visualization: True
+  do_visualization: False
   #  visualizer: drcnn # todo: implement
   evaluators: [ "kittiobj" ]
   batch_size: 1
   save_predictions: True
+  eval_all_attr: "model.drcnn.pretrained_yolact"
+  ckpt_dir: "models/yolact/kitti/resnet50_600x300_gray"
   # force_recompute: False
+  eval_all: True
+  eval_all_min: 50000
 
 dataloader:
   collator: ExtendedBatchCollator

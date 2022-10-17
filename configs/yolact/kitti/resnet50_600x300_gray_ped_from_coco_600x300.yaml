@@ -1,0 +1,97 @@
+model:
+  meta_architecture: "Yolact"
+  yolact:
+    num_classes: 2
+    class_names: [ 'pedestrian' ]
+    nvis: 400
+datasets:
+  train: ("kittikins_train",)
+  test: "kittikins_val"
+#  test: "kittikins_train"
+#  test: "kittikins_valmini"
+solver:
+  trainer: base
+  batch_size: 8
+  max_lr: 0.001
+  num_epochs: 1500
+  optimizer: SGD
+  scheduler: WarmupMultiStepLR
+  warmup_iters: 500
+  steps: [ 280000, 600000, 700000, 750000 ]
+  bias_lr_factor: 1
+  weight_decay: 0.0005
+  weight_decay_bias: 0.0005
+  save_every: True
+  save_mode: iteration
+  save_freq: 5000
+  tb_freq: 20
+  dist:
+    sampler:
+      shuffle: True
+  load_model: "models/yolact/coco/resnet50_600x300_ped_gray/model_iteration_210000.pth"
+  resume: True
+dataset:
+  kitti_kins:
+    use_gray: True
+    classes: ("__background__", "pedestrian")
+input:
+  shuffle: True
+  transforms:
+    - name: ConvertFromInts
+    - name: ToAbsoluteCoords
+    - name: PhotometricDistort
+    - name: Expand
+      mean: [ 103.94, 116.78, 123.68 ]
+    - name: RandomSampleCrop
+    - name: RandomMirror
+    - name: Resize
+      max_size: [ 600, 300 ]
+      preserve_aspect_ratio: False
+      discard_box_width: 0.007272727272727273
+      discard_box_height: 0.007272727272727273
+      resize_gt: True
+    - name: Pad
+      width: 600
+      height: 300
+      mean: [ 103.94, 116.78, 123.68 ]
+    - name: ToPercentCoords
+    - name: PrepareMasks
+      mask_size: 16
+      use_gt_bboxes: False
+    - name: BackboneTransform
+      normalize: True
+      mean: [ 103.94, 116.78, 123.68 ]
+      std: [ 57.38, 57.12, 58.40 ]
+      subtract_means: False
+      to_float: False
+      in_channel_order: 'BGR'
+      channel_order: 'RGB'
+  transforms_test:
+    - name: ConvertFromInts
+    - name: Resize
+      max_size: [ 600, 300 ]
+      preserve_aspect_ratio: False
+      discard_box_width: 0.007272727272727273
+      discard_box_height: 0.007272727272727273
+      resize_gt: False
+    - name: BackboneTransform
+      normalize: True
+      mean: [ 103.94, 116.78, 123.68 ]
+      std: [ 57.38, 57.12, 58.40 ]
+      subtract_means: False
+      to_float: False
+      in_channel_order: 'BGR'
+      channel_order: 'RGB'
+
+test:
+  do_visualization: True
+  visualizer: yolact
+  #  evaluators: ["kittiobj"]
+  batch_size: 1
+#  save_predictions: True
+
+
+dataloader:
+  #  collator: DetectionBatchCollator
+  collator: ExtendedBatchCollator
+  num_workers: 4

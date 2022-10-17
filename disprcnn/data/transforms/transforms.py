@@ -412,7 +412,10 @@ class Resize(object):
                 width = int(width * 300 / height)
                 height = 300
         else:
-            width, height = self.max_size, self.max_size
+            if isinstance(self.max_size, list):
+                width, height = self.max_size
+            else:
+                width, height = self.max_size, self.max_size
 
         image = cv2.resize(image, (width, height))
 

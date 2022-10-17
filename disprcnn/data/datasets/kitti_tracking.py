@@ -177,14 +177,14 @@ class KITTITrackingDataset(torch.utils.data.Dataset):
             return {'left': [], 'right': []}
         # annodir = os.path.join(self.root, f"tracking/training/label_02")
         # anno_cache_path = os.path.join(annodir, f'annotations_{self.split}.pkl')
-        anno_cache_path = f"data/kitti_tracking/annotations_{'.'.join(KITTITrackingDataset.CLASSES)}.pkl"
+        anno_cache_path = f"data/kitti_tracking/annotations_{self.split}_{'.'.join(KITTITrackingDataset.CLASSES)}.pkl"
         if os.path.exists(anno_cache_path):
             with open(anno_cache_path, 'rb') as f:
                 annotations = pickle.load(f)
         else:
             print('generating', anno_cache_path)
             annotations = {}
-            for seq in tqdm(self.seqs):
+            for seq in tqdm.tqdm(self.seqs):
                 with open(osp.join(self.root, f"tracking/training/label_02/{seq:04d}.txt")) as f:
                     lines = f.read().splitlines()
                 bbox_per_seq = {}

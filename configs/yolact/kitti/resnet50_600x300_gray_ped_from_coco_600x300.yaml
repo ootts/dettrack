@@ -34,6 +34,7 @@ dataset:
   kitti_kins:
     use_gray: True
     classes: ("__background__", "pedestrian")
+    remove_empty: True
 input:
   shuffle: True
   transforms:

@@ -12,7 +12,7 @@ from disprcnn.config import cfg
 from disprcnn.engine.defaults import default_argument_parser
 from disprcnn.evaluators import build_evaluators
 from disprcnn.trainer.build import build_trainer
-from disprcnn.utils.comm import synchronize, get_rank, get_world_size
+from disprcnn.utils.comm import synchronize, get_rank, get_world_size, setcfg
 # torch.multiprocessing.set_sharing_strategy('file_system')
 from disprcnn.utils.logger import setup_logger
 from disprcnn.utils.os_utils import isckpt
@@ -45,18 +45,6 @@ def eval_one_ckpt(trainer):
         if cfg.test.do_visualization:
             visualizer = build_visualizer(cfg)
             visualizer(preds, trainer)
-
-
-def setcfg(cfg, attr: str, value):
-    '''
-    cfg.attr = value
-    '''
-    cfg.defrost()
-    nodes = attr.split('.')
-    lastlevel = cfg
-    for node in nodes[:-1]:
-        lastlevel = getattr(lastlevel, node)
-    setattr(lastlevel, nodes[-1], value)
 
 
 def eval_all_ckpts(trainer):
@@ -97,17 +85,16 @@ def eval_all_ckpts(trainer):
                     csv_results[k].append(v)
                 if cfg.test.do_visualization:
                     visualizer(preds, trainer)
-    # write csv file
-    if get_rank() == 0:
-        csv_out_path = osp.join(trainer.output_dir, 'inference', cfg.datasets.test, 'eval_all_ckpt.csv')
-        os.makedirs(osp.dirname(csv_out_path), exist_ok=True)
-        with open(csv_out_path, 'w', newline='') as csvfile:
-            fieldnames = list(csv_results.keys())
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                # write csv file
+                csv_out_path = osp.join(trainer.output_dir, 'inference', cfg.datasets.test, 'eval_all_ckpt.csv')
+                os.makedirs(osp.dirname(csv_out_path), exist_ok=True)
+                with open(csv_out_path, 'w', newline='') as csvfile:
+                    fieldnames = list(csv_results.keys())
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-            writer.writeheader()
-            for i in range(len(csv_results['fname'])):
-                writer.writerow({k: v[i] for k, v in csv_results.items()})
+                    writer.writeheader()
+                    for i in range(len(csv_results['fname'])):
+                        writer.writerow({k: v[i] for k, v in csv_results.items()})
 
 
 def main():

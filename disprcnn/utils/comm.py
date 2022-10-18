@@ -121,7 +121,7 @@ def _pad_to_largest_tensor(tensor, group):
     """
     world_size = dist.get_world_size(group=group)
     assert (
-        world_size >= 1
+            world_size >= 1
     ), "comm.gather/all_gather must be called from ranks within the given group!"
     local_size = torch.tensor(
         [tensor.numel()], dtype=torch.int64, device=tensor.device)
@@ -279,6 +279,7 @@ def print_with_rank(*args, **kwargs):
         print(colored(f'rank {rank}', color), end=' ')
         print(*args)
 
+
 # def cat_outputs(outputs):
 #     if isinstance(outputs[0],torch.Tensor):
 #         return torch.cat(outputs,0)
@@ -293,3 +294,14 @@ def print_with_rank(*args, **kwargs):
 #             ret.append(cat_outputs(o[i] for o in outputs))
 #     else:
 #         return outputs
+
+def setcfg(cfg, attr: str, value):
+    '''
+    cfg.attr = value
+    '''
+    cfg.defrost()
+    nodes = attr.split('.')
+    lastlevel = cfg
+    for node in nodes[:-1]:
+        lastlevel = getattr(lastlevel, node)
+    setattr(lastlevel, nodes[-1], value)

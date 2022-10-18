@@ -12,6 +12,7 @@ import torch.utils.data
 import zarr
 from PIL import Image
 from dl_ext.primitive import safe_zip
+from loguru import logger
 
 from disprcnn.data.datasets.coco import COCOAnnotationTransform
 from dl_ext.vision_ext.datasets.kitti.io import *
@@ -87,7 +88,7 @@ class KITTIKinsDataset(torch.utils.data.Dataset):
                 if self.annotations['left'][int(imgid)]['labels'].sum() > 0:
                     new_ids.append(imgid)
             self.ids = new_ids
-        print('using dataset of length', self.__len__())
+        logger.info(f'using dataset of length {self.__len__()}')
 
     def __getitem__(self, index):
         # print('getitem', index)

@@ -8,7 +8,6 @@ from shutil import copytree, ignore_patterns
 import loguru
 import numpy as np
 import torch
-import zarr
 from termcolor import colored
 
 
@@ -49,6 +48,7 @@ def dict_to_str(d: dict, float_precision=2):
 
 
 def zarr_load(store):
+    import zarr
     a = zarr.load(store)
     assert a is not None, f'{store} do not exist!'
     return a

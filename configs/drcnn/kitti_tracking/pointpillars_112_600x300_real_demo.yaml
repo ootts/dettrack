@@ -76,7 +76,7 @@ test:
   do_visualization: False
   evaluators: [ ]
   batch_size: 1
-  save_predictions: False
+  save_predictions: True
 #  force_recompute: False
 
 dataloader:

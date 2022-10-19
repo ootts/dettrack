@@ -1,5 +1,5 @@
 // Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-//#include "nms.h"
+#include "nms.h"
 #include "ROIAlign.h"
 #include "ROIPool.h"
 

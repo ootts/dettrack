@@ -296,6 +296,8 @@ _C.dataset.kitti_kins.remove_empty = False
 _C.dataset.real = CN()
 _C.dataset.real.use_gray = False
 _C.dataset.real.classes = ("__background__", "car", "dontcare")
+_C.dataset.real.id_min = 0
+_C.dataset.real.id_max = -1
 
 _C.dataset.kitti_object = CN()
 _C.dataset.kitti_object.filter_empty = False

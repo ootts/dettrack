@@ -46,7 +46,10 @@ class RealDataset(torch.utils.data.Dataset):
         # self.annotations = self.read_annotations()
         self.infos = self.read_info()
         nimgs = len(os.listdir(osp.join(self.root, "image_02/0000")))
-        self.ids = list(map(lambda x: f"{x:06d}", range(1573, nimgs)))
+        id_min, id_max = self.cfg.id_min, self.cfg.id_max
+        if id_max < 0: id_max = nimgs
+        self.ids = list(map(lambda x: f"{x:06d}", range(id_min, id_max)))
+        # 0000: 1573,-1 for car, 801/835,847 for pedestrian
         if ds_len > 0:
             self.ids = self.ids[:ds_len]
         print('using dataset of length', self.__len__())

@@ -4,7 +4,6 @@ import torch
 from disprcnn.structures.bounding_box_3d import Box3DList
 from .bounding_box import BoxList
 
-from disprcnn.modeling.layers import nms as _box_nms
 import numpy as np
 
 
@@ -29,6 +28,7 @@ def boxlist_nms(boxlist, nms_thresh, max_proposals=-1, score_field="scores"):
     boxlist = boxlist.convert("xyxy")
     boxes = boxlist.bbox
     score = boxlist.get_field(score_field)
+    from disprcnn.modeling.layers import nms as _box_nms
     keep = _box_nms(boxes, score, nms_thresh)
     if max_proposals > 0:
         keep = keep[: max_proposals]
@@ -52,6 +52,8 @@ def intersect_pytorch(a, b):
 def double_view_boxlist_nms(left_boxlist, right_boxlist,
                             nms_thresh, max_proposals=-1, score_field='scores',
                             use_keep='joint'):
+    from disprcnn.modeling.layers import nms as _box_nms
+
     assert use_keep in ['joint', 'left', 'right']
     if nms_thresh <= 0:
         return left_boxlist, right_boxlist
@@ -62,6 +64,7 @@ def double_view_boxlist_nms(left_boxlist, right_boxlist,
     right_boxes = right_boxlist.bbox
     left_score = left_boxlist.get_field(score_field)
     right_score = right_boxlist.get_field(score_field)
+
     left_keep = _box_nms(left_boxes, left_score, nms_thresh)
     right_keep = _box_nms(right_boxes, right_score, nms_thresh)
     if use_keep == 'joint':

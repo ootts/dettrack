@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 import numpy as np
 import tqdm
-from skimage import io
+import imageio
 
 
 def area(boxes, add1=False):
@@ -155,7 +155,7 @@ def get_kitti_image_info(path,
             img_path = image_info['img_path']
             if relative_path:
                 img_path = str(root_path / img_path)
-            image_info['img_shape'] = np.array(io.imread(img_path).shape[:2], dtype=np.int32)
+            image_info['img_shape'] = np.array(imageio.imread(img_path).shape[:2], dtype=np.int32)
         if label_info:
             label_path = get_label_path(idx, path, training, relative_path)
             if relative_path:

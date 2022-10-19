@@ -2,7 +2,6 @@ import loguru
 import numpy as np
 import torch
 import trimesh
-from skimage import measure
 
 from disprcnn.utils.os_utils import red
 from disprcnn.utils.pn_utils import random_choice, to_array
@@ -439,6 +438,8 @@ class TSDFVolume:
         return self.tsdf_vol_cpu, self.color_vol_cpu
 
     def get_point_cloud(self):
+        from skimage import measure
+
         """Extract a point cloud from the voxel volume.
         """
         tsdf_vol, color_vol = self.get_volume()

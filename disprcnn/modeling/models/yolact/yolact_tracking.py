@@ -1,4 +1,5 @@
 import io
+import math
 
 import imageio
 import tempfile
@@ -259,7 +260,7 @@ class YolactTracking(nn.Module):
                 for id in duplicateid:
                     conflict_box = (idxs == id) & matched
                     idscores = match_score[..., id]
-                    idscores[~conflict_box] = -torch.inf
+                    idscores[~conflict_box] = -math.inf
                     maxval, maxid = idscores.max(0)
                     conflict_box[maxid] = False
                     matched[conflict_box] = False

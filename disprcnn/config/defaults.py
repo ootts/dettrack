@@ -6,6 +6,7 @@ _C = CN()
 _C.model = CN()
 _C.model.device = "cuda"
 _C.dbg = False
+_C.vis_plt = True
 _C.deterministic = False
 _C.evaltime = False
 

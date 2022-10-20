@@ -174,7 +174,7 @@ class DRCNN(nn.Module):
 
             left_result.add_field('imgid', dps['imgid'][0].item())
             right_result.add_field('imgid', dps['imgid'][0].item())
-            if self.dbg:
+            if self.dbg and self.total_cfg.vis_plt:
                 left_result.plot(dps['original_images']['left'][0],
                                  class_names=self.total_cfg.model.yolact.class_names, show=True)
                 right_result.plot(dps['original_images']['right'][0],

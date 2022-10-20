@@ -30,8 +30,9 @@ from disprcnn.utils.timer import EvalTime
 
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.structures.disparity import DisparityMap
-
+# from torchvision.ops.roi_align import RoIAlign as ROIAlign
 from disprcnn.modeling.layers import ROIAlign
+
 from torchvision.transforms import transforms
 
 from disprcnn.modeling.models.psmnet.stackhourglass import PSMNet

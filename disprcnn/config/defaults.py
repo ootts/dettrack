@@ -9,6 +9,7 @@ _C.dbg = False
 _C.vis_plt = True
 _C.deterministic = False
 _C.evaltime = False
+_C.evaltime_print = False
 
 _C.model.meta_architecture = "resnet"
 

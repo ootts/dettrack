@@ -1,24 +1,29 @@
 import os
+import os.path as osp
 
 import matplotlib.pyplot as plt
-import os.path as osp
-import loguru
-import numba.cuda
 import numpy as np
-
-from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
-from disprcnn.structures.calib import Calib
-from disprcnn.utils.pytorch_ssim import ssim
 import torch
 from tensorboardX import SummaryWriter
+from torch import nn
 
 from disprcnn.data.datasets.kitti_velodyne import random_flip, global_rotation, global_scaling_v2, \
     global_translate, \
     filter_gt_box_outside_range
+# from torchvision.ops.roi_align import RoIAlign as ROIAlign
+from disprcnn.modeling.layers import ROIAlign
 from disprcnn.modeling.models.pointpillars.pointpillars import PointPillars
+from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
+from disprcnn.modeling.models.psmnet.stackhourglass import PSMNet
+from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
+from disprcnn.modeling.models.yolact.yolact import Yolact
 from disprcnn.modeling.models.yolact.yolact_tracking import YolactTracking
+from disprcnn.structures.bounding_box import BoxList
 from disprcnn.structures.bounding_box_3d import Box3DList
 from disprcnn.structures.boxlist_ops import boxlist_iou
+from disprcnn.structures.calib import Calib
+from disprcnn.structures.segmentation_mask import SegmentationMask
+from disprcnn.utils.averagemeter import AverageMeter
 from disprcnn.utils.pn_utils import to_array, to_tensor
 from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
 from disprcnn.utils.ppp_utils.box_np_ops import rbbox2d_to_near_bbox, limit_period, sparse_sum_for_anchors_mask, \
@@ -26,29 +31,14 @@ from disprcnn.utils.ppp_utils.box_np_ops import rbbox2d_to_near_bbox, limit_peri
 from disprcnn.utils.ppp_utils.box_torch_ops import lidar_to_camera, box_camera_to_lidar, box_lidar_to_camera
 from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
 from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
-from disprcnn.utils.timer import EvalTime
-
-from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
-from disprcnn.structures.disparity import DisparityMap
-# from torchvision.ops.roi_align import RoIAlign as ROIAlign
-from disprcnn.modeling.layers import ROIAlign
-
-from torchvision.transforms import transforms
-
-from disprcnn.modeling.models.psmnet.stackhourglass import PSMNet
-from disprcnn.structures.segmentation_mask import SegmentationMask
-
-from disprcnn.structures.bounding_box import BoxList
-
-# from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
-
-from disprcnn.modeling.models.yolact.yolact import Yolact
-from torch import nn
-
+from disprcnn.utils.pytorch_ssim import ssim
 from disprcnn.utils.stereo_utils import expand_box_to_integer
+from disprcnn.utils.timer import EvalTime
 from disprcnn.utils.utils_3d import matrix_3x4_to_4x4
 from disprcnn.utils.vis3d_ext import Vis3D
-from disprcnn.utils.averagemeter import AverageMeter
+
+
+# from disprcnn.modeling.models.yolact.layers.output_utils import postprocess
 
 
 class DRCNN(nn.Module):
@@ -57,7 +47,7 @@ class DRCNN(nn.Module):
         self.total_cfg = cfg
         self.cfg = cfg.model.drcnn
         self.dbg = cfg.dbg is True
-        self.evaltime = EvalTime(disable=not cfg.evaltime, do_print=False)
+        self.evaltime = EvalTime(disable=not cfg.evaltime, do_print=cfg.evaltime_print)
         # self.detector2d_timer = Timer(ignore_first_n=20)
         # self.idispnet_timer = Timer(ignore_first_n=20)
         assert int(self.cfg.yolact_on) + int(self.cfg.yolact_tracking_on) == 1

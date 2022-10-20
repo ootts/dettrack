@@ -410,7 +410,9 @@ class PointPillars(nn.Module):
                 label_preds = selected_labels
                 # if self.use_direction_classifier:
                 dir_labels = selected_dir_labels
-                opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.byte()
+                # import pdb
+                # pdb.set_trace()
+                opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.byte().bool()
                 box_preds[..., -1] += torch.where(
                     opp_labels.bool(), torch.tensor(np.pi).cuda().float(),
                     torch.tensor(0.0).cuda().float())

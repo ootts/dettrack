@@ -16,3 +16,5 @@ python setup.py build develop
 cd ../../../../../../../../
 
 chmod +x tools/kitti_object/kitti_evaluation_lib/*
+
+#pip install --user --pre https://storage.googleapis.com/open3d-releases-master/python-wheels/open3d-0.13.0-cp38-cp38-linux_x86_64.whl

@@ -56,7 +56,7 @@ python tools/test_net.py -c configs/drcnn/kitti_tracking/pointpillars_112_demo.y
 4. Run inference and evaluate running time.
 
 ```bash
-python tools/test_net.py -c configs/drcnn/kitti_tracking/pointpillars_112_demo.yaml model.drcnn.mask_mode mask
+python tools/test_net.py -c configs/drcnn/kitti_tracking/pointpillars_112_demo.yaml model.drcnn.mask_mode mask evaltime True
 tensorboard --logdir models/drcnn/kitti_tracking/pointpillars_112_demo/evaltime/kittitrackingstereo_demo/
 # Then open localhost:6006 in your browser and you should see a running time curve.
 ```

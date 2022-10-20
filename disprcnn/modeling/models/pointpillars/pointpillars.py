@@ -224,7 +224,7 @@ class PointPillars(nn.Module):
             result.add_field("labels", labels)
             result.add_field("scores", score)
             result.add_field("imgid", imgid)
-            if self.dbg:
+            if self.dbg and self.total_cfg.model.meta_architecture == "PointPillars":
                 calib = load_calib(KITTIROOT, 'training', imgid)
                 lidar = load_velodyne(KITTIROOT, 'training', imgid)[:, :3]
                 img2 = load_image_2(KITTIROOT, 'training', imgid)

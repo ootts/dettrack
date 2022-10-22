@@ -48,6 +48,7 @@ model.eval()
 
 # Generate input tensor with random values
 input_tensor = torch.rand(4, 3, 224, 224)
+model(input_tensor)
 
 # Export torch model to ONNX
 print("Exporting ONNX model {}".format(output_onnx))

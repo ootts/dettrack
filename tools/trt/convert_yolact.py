@@ -37,7 +37,7 @@ from disprcnn.utils.logger import setup_logger
 import torch
 import torch.nn as nn
 
-output_onnx = "tmp/disprcnn.onnx"
+output_onnx = "tmp/yolact.onnx"
 
 
 # FC-ResNet101 pretrained model from torch-hub extended with argmax layer
@@ -52,8 +52,8 @@ class YolactOnnx(nn.Module):
         :return:
         """
         # dps = self.inputs_to_dps(inputs)
-        pred_outs, outs = self.model.forward_onnx(inputs)
-        return pred_outs, outs
+        pred_outs = self.model.forward_onnx(inputs)
+        return pred_outs
 
 
 def main():
@@ -70,8 +70,6 @@ def main():
         cfg.dataloader.num_workers = 0
     cfg.mode = 'test'
     cfg.freeze()
-    # os.makedirs(cfg.output_dir, exist_ok=True)
-    # Vis3D.default_out_folder = osp.join(cfg.output_dir, 'dbg')
     logger = setup_logger(cfg.output_dir, get_rank(), 'logtest.txt')
     trainer = build_trainer(cfg)
     trainer.resume()
@@ -100,16 +98,17 @@ def main():
     model = trainer.model
     model = YolactOnnx(model)
     model.eval()
+    model.cpu()
 
     # Generate input tensor with random values
-    input_tensor = torch.rand(4, 3, 375, 1242)
-    input_tensor = input_tensor.cuda()
+    input_tensor = torch.rand(2, 3, 300, 600)
+    # input_tensor = input_tensor.cuda()
 
-    dps = torch.load('tmp/dps.pth')
-    input_tensor[0, :, :, :] = dps['original_images']['left'][0].permute(2, 0, 1)
-    input_tensor[1, :, :, :] = dps['original_images']['right'][0].permute(2, 0, 1)
-    input_tensor[2, :, :300, :600] = dps['images']['left'][0]
-    input_tensor[3, :, :300, :600] = dps['images']['right'][0]
+    # dps = torch.load('tmp/dps.pth')
+    # input_tensor[0, :, :, :] = dps['original_images']['left'][0].permute(2, 0, 1)
+    # input_tensor[1, :, :, :] = dps['original_images']['right'][0].permute(2, 0, 1)
+    # input_tensor[2, :, :300, :600] = dps['images']['left'][0]
+    # input_tensor[3, :, :300, :600] = dps['images']['right'][0]
 
     # output_tensor = model(input_tensor)
 
@@ -118,7 +117,7 @@ def main():
     print("Exporting ONNX model {}".format(output_onnx))
     torch.onnx.export(model, input_tensor, output_onnx,
                       opset_version=12,
-                      do_constant_folding=False,
+                      do_constant_folding=True,
                       input_names=["input"],
                       output_names=["output"],
                       # dynamic_axes={"input": {0: "batch", 2: "height", 3: "width"},

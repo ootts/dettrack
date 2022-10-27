@@ -294,30 +294,25 @@ class Yolact(nn.Module):
         if proto_out is not None:
             pred_outs['proto'] = proto_out
 
-        if self.training:
-            # For the extra loss functions
-            if self.cfg.use_class_existence_loss:
-                pred_outs['classes'] = self.class_existence_fc(outs[-1].mean(dim=(2, 3)))
+        assert not self.training
+        assert not self.cfg.use_mask_scoring
+        # pred_outs['score'] = torch.sigmoid(pred_outs['score'])
 
-            if self.cfg.use_semantic_segmentation_loss:
-                pred_outs['segm'] = self.semantic_seg_conv(outs[0])
+        assert not self.cfg.use_focal_loss
+        assert not self.cfg.use_objectness_score
+        pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
+        unified_out = torch.zeros([image.shape[0], 11481, 4 + 2 + 32 + 4 + 32 + 75], device='cuda', dtype=torch.float32)
+        unified_out[:, :, :4] = pred_outs['loc']
+        unified_out[:, :, 4:4 + 2] = pred_outs['conf']
+        unified_out[:, :, 4 + 2:4 + 2 + 32] = pred_outs['mask']
+        unified_out[:, :, 4 + 2 + 32:4 + 2 + 32 + 4] = pred_outs['priors'][None].repeat(image.shape[0], 1, 1)
+        proto_out = pred_outs['proto'].reshape(image.shape[0], -1, 32)
+        unified_out[:, :proto_out.shape[1], 4 + 2 + 32 + 4:4 + 2 + 32 + 4 + 32] = proto_out
+        feat_out = outs[0]
+        feat_out = feat_out.reshape(feat_out.shape[0], -1, feat_out.shape[-1])
+        unified_out[:, :feat_out.shape[1], 4 + 2 + 32 + 4 + 32:] = feat_out
 
-            return pred_outs
-        else:
-            assert not self.cfg.use_mask_scoring
-            # pred_outs['score'] = torch.sigmoid(pred_outs['score'])
-
-            assert not self.cfg.use_focal_loss
-            assert not self.cfg.use_objectness_score
-            pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
-            # if return_features:
-            return pred_outs, outs
-            # else:
-            #     return pred_outs
-            # rets = self.detect(pred_outs, self)
-            # if return_features:
-            #     rets = rets, outs
-            # return rets
+        return unified_out
 
 
 class YolactWrapper(nn.Module):

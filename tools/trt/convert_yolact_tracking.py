@@ -37,13 +37,13 @@ from disprcnn.utils.logger import setup_logger
 import torch
 import torch.nn as nn
 
-output_onnx = "tmp/yolact.onnx"
+output_onnx = "tmp/yolact_tracking_head.onnx"
 
 
 # FC-ResNet101 pretrained model from torch-hub extended with argmax layer
-class YolactOnnx(nn.Module):
+class YolactTrackingHeadOnnx(nn.Module):
     def __init__(self, model):
-        super(YolactOnnx, self).__init__()
+        super(YolactTrackingHeadOnnx, self).__init__()
         self.model = model.yolact_tracking.yolact
 
     def forward(self, inputs):
@@ -96,12 +96,12 @@ def main():
     data0 = valid_ds[0]
     calib = data0['targets']['left'].extra_fields['calib']
     model = trainer.model
-    model = YolactOnnx(model)
+    model = YolactTrackingHeadOnnx(model)
     model.eval()
     model.cpu()
 
     # Generate input tensor with random values
-    input_tensor = torch.rand(2, 3, 300, 600).float()
+    input_tensor = torch.rand(2, 3, 300, 600)
     # input_tensor = input_tensor.cuda()
 
     # dps = torch.load('tmp/dps.pth')

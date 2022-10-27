@@ -1,16 +1,14 @@
 import torch
+import os
+
 import cv2
 import numpy as np
-import os
 import pycuda.driver as cuda
 import pycuda.autoinit
 import tensorrt as trt
 
-import matplotlib.pyplot as plt
-from PIL import Image
-
 from disprcnn.modeling.models.yolact.layers import Detect
-from disprcnn.modeling.models.yolact.layers.box_utils import decode
+from disprcnn.utils.timer import EvalTime
 
 TRT_LOGGER = trt.Logger()
 
@@ -29,6 +27,7 @@ def infer(engine, detector, input_file1, input_file2):
     img1 = preprocess(input_file1)
     img2 = preprocess(input_file2)
     input_image = np.stack([img1, img2])
+    # evaltime = EvalTime()
 
     with engine.create_execution_context() as context:
         bindings = []
@@ -49,12 +48,13 @@ def infer(engine, detector, input_file1, input_file2):
         # Transfer input data to the GPU.
         cuda.memcpy_htod_async(input_memory, input_buffer, stream)
         # Run inference
+        # evaltime('')
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
+        # evaltime('output')
         # Transfer prediction output from the GPU.
         cuda.memcpy_dtoh_async(output_buffer, output_memory, stream)
         # Synchronize the stream
         stream.synchronize()
-
     unified_out = output_buffer.reshape(2, 11481, -1)
     loc = unified_out[:, :, :4]
     conf = unified_out[:, :, 4:4 + 2]
@@ -69,7 +69,8 @@ def infer(engine, detector, input_file1, input_file2):
                  'priors': torch.from_numpy(prior).cuda(),
                  'proto': torch.from_numpy(proto).cuda()}
     dets_2d = detector(pred_outs)
-    print()
+    # evaltime('decode')
+    # print()
 
 
 def preprocess(input_file):
@@ -93,7 +94,6 @@ def preprocess(input_file):
 def main():
     from disprcnn.engine.defaults import setup
     from disprcnn.engine.defaults import default_argument_parser
-    from disprcnn.data import make_data_loader
     parser = default_argument_parser()
     args = parser.parse_args()
     args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
@@ -106,6 +106,7 @@ def main():
                       conf_thresh=yolact_cfg.nms_conf_thresh, nms_thresh=yolact_cfg.nms_thresh)
 
     with load_engine(engine_file) as engine:
+        # for _ in range(10000):
         infer(engine, detector, input_file1, input_file2)
 
 

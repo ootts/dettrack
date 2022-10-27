@@ -37,6 +37,8 @@ from disprcnn.utils.logger import setup_logger
 import torch
 import torch.nn as nn
 
+from disprcnn.utils.timer import EvalTime
+
 output_onnx = "tmp/yolact.onnx"
 
 
@@ -98,32 +100,13 @@ def main():
     model = trainer.model
     model = YolactOnnx(model)
     model.eval()
-    model.cpu()
-
-    # Generate input tensor with random values
-    input_tensor = torch.rand(2, 3, 300, 600).float()
-    # input_tensor = input_tensor.cuda()
-
-    # dps = torch.load('tmp/dps.pth')
-    # input_tensor[0, :, :, :] = dps['original_images']['left'][0].permute(2, 0, 1)
-    # input_tensor[1, :, :, :] = dps['original_images']['right'][0].permute(2, 0, 1)
-    # input_tensor[2, :, :300, :600] = dps['images']['left'][0]
-    # input_tensor[3, :, :300, :600] = dps['images']['right'][0]
-
-    # output_tensor = model(input_tensor)
-
-    # Export torch model to ONNX
-    # torch.jit.script(model, input_tensor)
-    print("Exporting ONNX model {}".format(output_onnx))
-    torch.onnx.export(model, input_tensor, output_onnx,
-                      opset_version=12,
-                      do_constant_folding=True,
-                      input_names=["input"],
-                      output_names=["output"],
-                      # dynamic_axes={"input": {0: "batch", 2: "height", 3: "width"},
-                      #               "output": {0: "batch"}
-                      #               },
-                      verbose=False)
+    model.cuda()
+    evaltime = EvalTime()
+    for _ in range(1000):
+        input_tensor = torch.rand(2, 3, 300, 600).float().cuda()
+        evaltime('')
+        model(input_tensor)
+        evaltime('forward')
 
 
 if __name__ == '__main__':

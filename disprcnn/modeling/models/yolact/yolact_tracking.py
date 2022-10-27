@@ -228,7 +228,7 @@ class YolactTracking(nn.Module):
             feat = feat[0]
             roi_features = self.extract_roi_features(preds, feat)
             ref_x = self.memory
-            ref_x_n = [len(self.memory)]
+            ref_x_n = [self.memory.shape[0]]
             x = roi_features
             x_n = [len(a) for a in preds]
             if len(self.memory) > 0 and x.numel() > 0:
@@ -269,7 +269,144 @@ class YolactTracking(nn.Module):
 
                 # matched = matched & dual
             else:
-                matched = torch.full([len(preds[0])], False).cuda()
+                matched = torch.full([len(preds[0])], 0).cuda().bool()
+                unmatched = ~matched
+            cur_trackids = torch.full([len(preds[0])], -1).long().cuda()
+            if matched.sum() > 0:
+                idxs = idxs - 1
+                cur_trackids[matched] = idxs[matched]
+                cur_feat = roi_features[matched]
+                self.memory[idxs[matched]] = cur_feat
+                # todo:simplify
+                self.boxmemory.bbox[idxs[matched]] = preds[0].bbox[matched]
+
+            if unmatched.sum() > 0:
+                new_tids = torch.arange(self.memory.shape[0], self.memory.shape[0] + unmatched.sum()).long().cuda()
+                cur_trackids[unmatched] = new_tids
+                self.memory = torch.cat([self.memory, roi_features[unmatched]], dim=0)
+                # res_box = preds[0][unmatched]
+                if not isinstance(self.boxmemory, BoxList):
+                    self.boxmemory = preds[0][unmatched]
+                else:
+                    self.boxmemory = cat_boxlist([self.boxmemory, preds[0][unmatched]], ignore_fields=True,
+                                                 ignore_maps=True)
+                    # if isinstance(self.boxmemory, BoxList):
+                #     self.boxmemory = cat_boxlist([self.boxmemory, res_box])
+                # else:
+                #     self.boxmemory = res_box
+            keep = matched | unmatched
+
+            pred = preds[0].resize([width, height])
+            if pred.has_map('masks'):
+                pred.add_map('masks', pred.get_map('masks').convert('mask').resize([width, height]))
+            pred = pred[keep]
+            cur_trackids = cur_trackids[keep]
+
+            pred.add_field('trackids', cur_trackids)
+        else:
+            pred = preds[0].resize([width, height])
+        if self.total_cfg.evaltime:
+            self.meter_track.update(self.evaltime('track'))
+            # print('track', self.meter_track.avg)
+        if self.dbg:
+            plt.title(f'global_step: {dps["global_step"]}')
+            img = untsfm(dps['image'][0], width, height)
+            plt.imshow(img)
+            colors = list(mcolors.BASE_COLORS.keys())
+            colors.remove('k')
+            for i, box in enumerate(pred.convert('xywh').bbox.tolist()):
+                x, y, w, h = box
+                score = pred.get_field('scores').tolist()[i]
+                if track:
+                    trackid = pred.get_field("trackids")[i]
+                    c = colors[trackid % len(colors)]
+                    plt.text(x, y, f'{trackid}_{score:.2f}', color=c, fontsize='x-large')
+                    plt.gca().add_patch(plt.Rectangle((x, y), w, h, fill=False, color=c, linewidth=2))
+                else:
+                    plt.gca().add_patch(
+                        plt.Rectangle((x, y), w, h, fill=False, color=colors[i % len(colors)], linewidth=2))
+            img_buf = io.BytesIO()
+            plt.savefig(img_buf, format='png')
+            vis3d.add_image(Image.open(img_buf))
+            img_buf.close()
+            plt.close("all")
+        loss_dict = {}
+        return pred, loss_dict
+
+    def forward_onnx(self, dps, track=True, add_mask=False, mask_mode='poly'):
+        vis3d = Vis3D(
+            xyz_pattern=('x', 'y', 'z'),
+            out_folder="dbg",
+            sequence="yolact_tracking_forward_test",
+            # auto_increase=,
+            enable=self.dbg,
+        )
+        self.evaltime('2d begin')
+        preds, feat = self.yolact({'image': dps['image']}, return_features=True)
+        # if preds[0]['detection'] is not None:
+        #     confidence = preds[0]["detection"]["score"]
+        preds = self.decode_yolact_preds(preds, dps['image'].shape[-2], dps['image'].shape[-1], add_mask=add_mask,
+                                         mask_mode=mask_mode)
+        confidence = preds[0].get_field('scores')
+        if self.total_cfg.evaltime:
+            self.meter_2d.update(self.evaltime('2d end'))
+            # print('2d', self.meter_2d.avg)
+        width, height = dps['width'][0].item(), dps['height'][0].item()
+
+        if track:
+            seqid = dps['seq']
+            assert seqid.shape[0] == 1  # batch size=1
+            seqid = seqid[0].item()
+            if seqid != self.seq_id:
+                # reset
+                self.seq_id = seqid
+                self.memory = torch.empty([0, 256, 7, 7], dtype=torch.float, device='cuda')  # todo: put in cfg
+                self.boxmemory = None
+            feat = feat[0]
+            roi_features = self.extract_roi_features(preds, feat)
+            ref_x = self.memory
+            ref_x_n = [self.memory.shape[0]]
+            x = roi_features
+            x_n = [len(a) for a in preds]
+            if len(self.memory) > 0 and x.numel() > 0:
+                match_score = self.track_head(x, ref_x, x_n, ref_x_n)[0]
+            else:
+                match_score = torch.empty([len(preds[0]), len(self.memory)], dtype=torch.float, device='cuda')
+            ##############  ↓ Step : match  ↓  ##############
+            if match_score.numel() > 0:
+                match_score = F.softmax(match_score, dim=1)
+                iou_score = self.calcIOUscore(preds)
+                conf_score = torch.t(confidence.repeat(len(self.boxmemory) + 1, 1))
+                match_score = torch.log(match_score) + self.cfg.alpha * torch.log(
+                    conf_score) + self.cfg.beta * iou_score
+                # TODO
+                max_score, idxs = match_score.max(1)
+                # todo fix bug for empty bin!!!
+                # dual = match_score.max(0).indices[match_score.max(1).indices] == torch.arange(len(preds[0])).cuda()
+                # matched = max_score > 0.5
+                matched = (max_score > self.cfg.thresh) & (idxs != 0)
+                unmatched = ~matched
+                matchidx = idxs[matched]
+                duplicateid = []
+                for id in matchidx:
+                    if id == 0:
+                        continue
+                    if sum(matchidx == id) > 1:
+                        if id not in duplicateid:
+                            duplicateid.append(id)
+                for id in duplicateid:
+                    conflict_box = (idxs == id) & matched
+                    idscores = match_score[..., id]
+                    idscores[~conflict_box] = -math.inf
+                    maxval, maxid = idscores.max(0)
+                    conflict_box[maxid] = False
+                    matched[conflict_box] = False
+
+                matchidx = idxs[matched]
+
+                # matched = matched & dual
+            else:
+                matched = torch.full([len(preds[0])], 0).cuda().bool()
                 unmatched = ~matched
             cur_trackids = torch.full([len(preds[0])], -1).long().cuda()
             if matched.sum() > 0:

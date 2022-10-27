@@ -148,19 +148,19 @@ class PredictionModule(nn.Module):
         conv_h = x.size(2)
         conv_w = x.size(3)
 
-        if self.cfg.extra_head_net is not None:
-            x = src.upfeature(x)
+        # if self.cfg.extra_head_net is not None:
+        x = src.upfeature(x)
 
-        if self.cfg.use_prediction_module:
-            # The two branches of PM design (c)
-            a = src.block(x)
-
-            b = src.conv(x)
-            b = src.bn(b)
-            b = F.relu(b)
-
-            # TODO: Possibly switch this out for a product
-            x = a + b
+        # if self.cfg.use_prediction_module:
+        #     # The two branches of PM design (c)
+        #     a = src.block(x)
+        #
+        #     b = src.conv(x)
+        #     b = src.bn(b)
+        #     b = F.relu(b)
+        #
+        #     # TODO: Possibly switch this out for a product
+        #     x = a + b
 
         bbox_x = src.bbox_extra(x)
         conf_x = src.conf_extra(x)

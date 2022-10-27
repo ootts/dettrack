@@ -55,6 +55,10 @@ class BoxList(object):
     def has_map(self, map):
         return map in self.PixelWise_map
 
+    def remove_map(self, map):
+        self.PixelWise_map.pop(map)
+        return self
+
     def maps(self):
         return list(self.PixelWise_map.keys())
 
@@ -251,6 +255,8 @@ class BoxList(object):
         return bbox
 
     def __getitem__(self, item):
+        if isinstance(item, list) and isinstance(item[0], torch.Tensor):
+            item = [i.item() for i in item]  # compat to onnx
         bbox = BoxList(self.bbox[item], self.size, self.mode)
         # bbox._copy_map(self)
         for k, v in self.extra_fields.items():

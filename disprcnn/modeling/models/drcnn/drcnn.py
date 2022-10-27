@@ -6,12 +6,13 @@ import numpy as np
 import torch
 from tensorboardX import SummaryWriter
 from torch import nn
+from torchvision.ops import RoIAlign
 
 from disprcnn.data.datasets.kitti_velodyne import random_flip, global_rotation, global_scaling_v2, \
     global_translate, \
     filter_gt_box_outside_range
 # from torchvision.ops.roi_align import RoIAlign as ROIAlign
-from disprcnn.modeling.layers import ROIAlign
+# from disprcnn.modeling.layers import ROIAlign
 from disprcnn.modeling.models.pointpillars.pointpillars import PointPillars
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.modeling.models.psmnet.stackhourglass import PSMNet
@@ -32,7 +33,7 @@ from disprcnn.utils.ppp_utils.box_torch_ops import lidar_to_camera, box_camera_t
 from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
 from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
 from disprcnn.utils.pytorch_ssim import ssim
-from disprcnn.utils.stereo_utils import expand_box_to_integer
+from disprcnn.utils.stereo_utils import expand_box_to_integer, expand_box_to_integer_torch
 from disprcnn.utils.timer import EvalTime
 from disprcnn.utils.utils_3d import matrix_3x4_to_4x4
 from disprcnn.utils.vis3d_ext import Vis3D
@@ -63,7 +64,8 @@ class DRCNN(nn.Module):
             self.yolact_tracking.load_state_dict(ckpt)
         if self.cfg.idispnet_on:
             self.idispnet = PSMNet(cfg)
-            self.roi_align = ROIAlign((self.idispnet.input_size, self.idispnet.input_size), 1.0, 0)
+            self.roi_align = RoIAlign((self.idispnet.input_size, self.idispnet.input_size), 1.0, 0)
+            # use torchvision implementation
         if self.cfg.detector_3d_on:
             self.pointpillars = PointPillars(cfg)
             self.voxel_generator = build_voxel_generator(self.total_cfg.voxel_generator)
@@ -247,6 +249,59 @@ class DRCNN(nn.Module):
             self.vis_final_result(dps, left_result, right_result)
         return outputs, loss_dict
 
+    @torch.no_grad()
+    def forward_onnx(self, dps):
+        left_result, _ = self.yolact_tracking({
+            'global_step': dps['global_step'],
+            'image': dps['images']['left'],
+            'seq': dps['seq'],
+            'width': dps['width'],
+            'height': dps['height'],
+        }, track=True, add_mask=True, mask_mode=self.cfg.mask_mode)
+        right_result, _ = self.yolact_tracking({
+            'global_step': dps['global_step'],
+            'image': dps['images']['right'],
+            'seq': dps['seq'],
+            'width': dps['width'],
+            'height': dps['height'],
+        }, track=False, add_mask=False)
+        left_result, right_result = self.match_lp_rp(left_result, right_result,
+                                                     dps['original_images']['left'][0],
+                                                     dps['original_images']['right'][0])
+        left_result.add_field('imgid', dps['imgid'][0].item())
+        right_result.add_field('imgid', dps['imgid'][0].item())
+        # left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
+        #                                                                                             left_result,
+        #                                                                                             right_result)
+        # if len(left_roi_images) > 0:
+        #     disp_output = self.idispnet({'left': left_roi_images, 'right': right_roi_images})
+        # else:
+        #     disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
+        # left_result.add_field('disparity', disp_output)
+        # pp_input = self.prepare_pointpillars_input(dps, left_result, right_result)
+        # pp_output, pp_loss_dict = self.pointpillars(pp_input)
+        #
+        # if len(left_result) == 0:
+        #     box3d = torch.empty([0, 7]).cuda().float()
+        #     left_result.add_field('box3d', box3d)
+        # elif len(pp_output['left']) == 0:
+        #     box3d = torch.ones([0, 7]).float().cuda()
+        #     left_result.add_field('box3d', box3d)
+        # else:
+        #     # iou = boxlist_iou(left_result, pp_output['left'])
+        #     # maxiou, maxiouidx = iou.max(1)
+        #     # box3d = pp_output['left'].get_field('box3d').bbox_3d[maxiouidx]
+        #     # indices = [0]
+        #     box3d = pp_output['left'].get_field('box3d').bbox_3d.reshape(-1, 7)
+        #
+        #     box3d = box3d[0][None].repeat(6, 1)
+        #     print(box3d.shape)
+        #     # box3d = torch.ones([6, 7]).float().cuda()
+        #     left_result.add_field('box3d', box3d)
+        #     # return {'left': torch.load('tmp/left_result.pth')}
+        # left_result.remove_map('masks')
+        return {'left': left_result}
+
     def decode_yolact_preds(self, preds, h, w, add_mask=True, retvalid=False):
         evaltime = EvalTime(disable=True)
         evaltime('')
@@ -277,19 +332,16 @@ class DRCNN(nn.Module):
         return boxlist
 
     def match_lp_rp(self, lp, rp, img2, img3):
-        # lp = maskrcnn_to_disprcnn(lp)
-        # rp = maskrcnn_to_disprcnn(rp)
         W, H = lp.size
         lboxes = lp.bbox.round().long().tolist()
-        llabels = lp.get_field('labels').long().tolist()
+        # llabels = lp.get_field('labels').long().tolist() # onnx fails.
         rboxes = rp.bbox.round().long().tolist()
-        # rlabels = rp.get_field('labels').long().tolist()
         ssims = torch.zeros((len(lboxes), len(rboxes)))
         for i in range(len(lboxes)):
             x1, y1, x2, y2 = lboxes[i]
-            ssim_coef = self.cfg.ssim_coefs[llabels[i] - 1]
-            ssim_intercept = self.cfg.ssim_intercepts[llabels[i] - 1]
-            ssim_std = self.cfg.ssim_stds[llabels[i] - 1]
+            ssim_coef = self.cfg.ssim_coefs[0]
+            ssim_intercept = self.cfg.ssim_intercepts[0]
+            ssim_std = self.cfg.ssim_stds[0]
             for j in range(len(rboxes)):
                 x1p, y1p, x2p, y2p = rboxes[j]
                 # adaptive thresh
@@ -330,51 +382,53 @@ class DRCNN(nn.Module):
         img_right = dps['original_images']['right'][0]
         rois_left = []
         rois_right = []
-        fxus, x1s, x1ps, x2s, x2ps = [], [], [], [], []
-        # for i in range(bsz):
+        x1s, x1ps, x2s, x2ps = [], [], [], []
         left_target = dps['targets']['left'][0]
         calib = left_target.get_field('calib')
-        fxus.extend([calib.stereo_fuxbaseline for _ in range(len(left_result))])
+        fxus = torch.tensor([calib.stereo_fuxbaseline for _ in range(len(left_result))]).float().cuda()
         mask_preds_per_img = left_result.get_map('masks').get_mask_tensor(squeeze=False)
-        for j, (leftbox, rightbox, mask_pred) in enumerate(zip(left_result.bbox.tolist(),
-                                                               right_result.bbox.tolist(),
+        for j, (leftbox, rightbox, mask_pred) in enumerate(zip(left_result.bbox,  # .tolist() causes onnx error
+                                                               right_result.bbox,
                                                                mask_preds_per_img)):
             # 1 align left box and right box
-            x1, y1, x2, y2 = expand_box_to_integer(leftbox)
-            x1p, _, x2p, _ = expand_box_to_integer(rightbox)
-            x1 = max(0, x1)
-            x1p = max(0, x1p)
-            y1 = max(0, y1)
-            y2 = min(y2, left_result.height - 1)
-            x2 = min(x2, left_result.width - 1)
-            x2p = min(x2p, left_result.width - 1)
-            max_width = max(x2 - x1, x2p - x1p)
-            allow_extend_width = min(left_result.width - x1, left_result.width - x1p)
+            leftbox = expand_box_to_integer_torch(leftbox)
+            rightbox = expand_box_to_integer_torch(rightbox)
+            leftbox[0] = torch.clamp(leftbox[0], min=0)
+            rightbox[0] = torch.clamp(rightbox[0], min=0)
+            leftbox[1] = torch.clamp(leftbox[1], min=0)
+            leftbox[3] = torch.clamp(leftbox[3], max=left_result.height - 1)
+            leftbox[2] = torch.clamp(leftbox[2], max=left_result.width - 1)
+            rightbox[2] = torch.clamp(rightbox[2], max=left_result.width - 1)
+            max_width = max(leftbox[2] - leftbox[0], rightbox[2] - rightbox[0])
+            allow_extend_width = min(left_result.width - leftbox[0], left_result.width - rightbox[0])
             max_width = min(max_width, allow_extend_width)
-            rois_left.append([0, x1, y1, x1 + max_width, y2])
-            rois_right.append([0, x1p, y1, x1p + max_width, y2])
-            x1s.append(x1)
-            x1ps.append(x1p)
-            x2s.append(x1 + max_width)
-            x2ps.append(x1p + max_width)
-        left_roi_images = self.crop_and_transform_roi_img(img_left.permute(2, 0, 1)[None], rois_left)
-        right_roi_images = self.crop_and_transform_roi_img(img_right.permute(2, 0, 1)[None], rois_right)
+            leftbox[2] = leftbox[0] + max_width
+            rightbox[2] = rightbox[0] + max_width
+            rightbox[1] = leftbox[1]
+            rightbox[3] = leftbox[3]
+            rois_left.append(torch.cat([torch.tensor([0]).long().cuda(), leftbox]))
+            rois_right.append(torch.cat([torch.tensor([0]).long().cuda(), rightbox]))
+            x1s.append(leftbox[0])
+            x1ps.append(rightbox[0])
+            x2s.append(leftbox[2])
+            x2ps.append(rightbox[2])
+
+        left_roi_images = self.crop_and_transform_roi_img(img_left.permute(2, 0, 1)[None], torch.stack(rois_left))
+        right_roi_images = self.crop_and_transform_roi_img(img_right.permute(2, 0, 1)[None], torch.stack(rois_right))
         if len(left_roi_images) != 0:
-            x1s = torch.tensor(x1s).cuda()
-            x1ps = torch.tensor(x1ps).cuda()
-            x2s = torch.tensor(x2s).cuda()
-            x2ps = torch.tensor(x2ps).cuda()
-            fxus = torch.tensor(fxus).cuda()
+            x1s = torch.stack(x1s)
+            x1ps = torch.stack(x1ps)
+            x2s = torch.stack(x2s)
+            x2ps = torch.stack(x2ps)
         else:
             left_roi_images = torch.empty((0, 3, self.idispnet.input_size, self.idispnet.input_size)).cuda()
             right_roi_images = torch.empty((0, 3, self.idispnet.input_size, self.idispnet.input_size)).cuda()
         return left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps
 
     def crop_and_transform_roi_img(self, im, rois_for_image_crop):
-        rois_for_image_crop = torch.as_tensor(rois_for_image_crop, dtype=torch.float32, device=im.device)
-        im = self.roi_align(im.float() / 255.0, rois_for_image_crop)
-        mean = torch.as_tensor([0.485, 0.456, 0.406], dtype=torch.float32, device=im.device)
-        std = torch.as_tensor([0.229, 0.224, 0.225], dtype=torch.float32, device=im.device)
+        im = self.roi_align(im.float() / 255.0, rois_for_image_crop.float())
+        mean = torch.tensor([0.485, 0.456, 0.406]).float().cuda()
+        std = torch.tensor([0.229, 0.224, 0.225]).float().cuda()
         im.sub_(mean[None, :, None, None]).div_(std[None, :, None, None])
         return im
 
@@ -391,6 +445,7 @@ class DRCNN(nn.Module):
             print()
 
     def prepare_pointpillars_input(self, dps, left_result, right_result):
+        return torch.load('tmp/example.pth')
         vis3d = Vis3D(
             xyz_pattern=('x', '-y', '-z'),
             out_folder="dbg",
@@ -407,7 +462,7 @@ class DRCNN(nn.Module):
         evaltime('disp pp')
         target = dps['targets']['left'][0]
         calib = target.get_field('calib').calib
-        calib = Calib(calib, (calib.width, calib.height))
+        calib = Calib(calib, (calib.width, calib.height), 'cuda')
         pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
         if self.dbg: vis3d.add_point_cloud(pts_rect, name='pts_rect')
         keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
@@ -523,7 +578,7 @@ class DRCNN(nn.Module):
             vis3d.add_box3dlist(box3d, name='pos_anchors')
         evaltime('pp5')
         example['coordinates'] = torch.cat([torch.full_like(coordinates[:, 0:1], 0), example['coordinates']], dim=1)
-        example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid'])]
+        example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid']).cuda()]
         example['calib'] = calib
         example['width'] = dps['width'].item()
         example['height'] = dps['height'].item()

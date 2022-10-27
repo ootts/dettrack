@@ -7,30 +7,31 @@ from dl_ext.vision_ext.datasets.kitti.structures import Calibration
 
 
 class Calib:
-    def __init__(self, calib: Calibration, image_size):
+    def __init__(self, calib: Calibration, image_size, device='cpu'):
         # assert isinstance(calib, Calibration)
         self.calib = calib
         self.size = image_size
+        self.device = device
 
     @property
     def P0(self):
-        return torch.tensor(self.calib.P0).float()
+        return torch.tensor(self.calib.P0).float().to(self.device)
 
     @property
     def P2(self):
-        return torch.tensor(self.calib.P2).float()
+        return torch.tensor(self.calib.P2).float().to(self.device)
 
     @property
     def P3(self):
-        return torch.tensor(self.calib.P3).float()
+        return torch.tensor(self.calib.P3).float().to(self.device)
 
     @property
     def V2C(self):
-        return torch.tensor(self.calib.V2C).float()
+        return torch.tensor(self.calib.V2C).float().to(self.device)
 
     @property
     def R0(self):
-        return torch.tensor(self.calib.R0).float()
+        return torch.tensor(self.calib.R0).float().to(self.device)
 
     @property
     def width(self):
@@ -46,7 +47,7 @@ class Calib:
 
     def crop(self, box):
         x1, y1, x2, y2 = box
-        ret = Calib(deepcopy(self.calib), (x2 - x1, y2 - y1))
+        ret = Calib(deepcopy(self.calib), (x2 - x1, y2 - y1), self.device)
         ret.P0[0, 2] = ret.P0[0, 2] - x1
         ret.P0[1, 2] = ret.P0[1, 2] - y1
         ret.P2[0, 2] = ret.P2[0, 2] - x1
@@ -65,7 +66,7 @@ class Calib:
             warn('dst size < 0, size will not change')
             return self
         width, height = dst_size
-        ret = Calib(deepcopy(self.calib), (width, height))
+        ret = Calib(deepcopy(self.calib), (width, height), self.device)
         ret.calib.P0[0] = ret.calib.P0[0] / self.width * width
         ret.calib.P0[1] = ret.calib.P0[1] / self.height * height
         ret.calib.P2[0] = ret.calib.P2[0] / self.width * width
@@ -214,3 +215,12 @@ class Calib:
     @property
     def cv(self):
         return self.P2[1, 2]
+
+    def cuda(self):
+        self.device = 'cuda'
+        return self
+
+    def cpu(self):
+        self.device = 'cpu'
+        return self
+

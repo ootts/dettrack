@@ -139,7 +139,8 @@ class ResNetBackbone(nn.Module):
             x = layer(x)
             outs.append(x)
 
-        return tuple(outs)
+        # return tuple(outs)
+        return outs
 
     def init_backbone(self, path):
         """ Initializes the backbone weights for training. """

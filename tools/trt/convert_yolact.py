@@ -18,6 +18,8 @@ import requests
 
 from disprcnn.engine.defaults import default_argument_parser
 from disprcnn.structures.bounding_box import BoxList
+from disprcnn.structures.bounding_box_3d import Box3DList
+from disprcnn.structures.boxlist_ops import boxlist_iou
 from disprcnn.trainer.build import build_trainer
 from disprcnn.utils.comm import get_rank
 from disprcnn.utils.logger import setup_logger
@@ -39,72 +41,19 @@ output_onnx = "tmp/disprcnn.onnx"
 
 
 # FC-ResNet101 pretrained model from torch-hub extended with argmax layer
-class FCN_ResNet101(nn.Module):
-    def __init__(self, model, calib):
-        super(FCN_ResNet101, self).__init__()
-        self.model = model
-        self.calib = calib
-        # self.transforms = transforms
-        self.global_step = 0
-
-    def inputs_to_dps(self, inputs):
-        device = inputs.device
-        left_original_img, right_original_img, left_img, right_img = torch.split(inputs, 1, dim=0)
-        left_original_img = left_original_img.permute(0, 2, 3, 1)
-        right_original_img = right_original_img.permute(0, 2, 3, 1)
-        left_img = left_img[:, :, :300:600]
-        right_img = right_img[:, :, :300:600]
-        left_target = BoxList(torch.empty([0, 4], device=device, dtype=torch.float), (1, 1))
-        right_target = BoxList(torch.empty([0, 4], device=device, dtype=torch.float), (1, 1))
-        left_target.add_field("calib", self.calib)
-
-        dps = {
-            'original_images': {
-                'left': left_original_img,
-                'right': right_original_img,
-            },
-            'images': {
-                'left': left_img,
-                'right': right_img,
-            },
-            'targets': {
-                'left': [left_target],
-                'right': [right_target]
-            },
-            'height': torch.tensor([left_original_img.shape[1]], device=device, dtype=torch.long),
-            'width': torch.tensor([left_original_img.shape[2]], device=device, dtype=torch.long),
-            'index': torch.tensor([self.global_step], device=device, dtype=torch.long),
-            'seq': torch.tensor([1], device=device, dtype=torch.long),  # any int number
-            'imgid': torch.tensor([self.global_step], device=device, dtype=torch.long),
-            'global_step': self.global_step
-        }
-
-        return dps
-
-    def out_to_tensor(self, out):
-        out_tensor = torch.full([20, 14], -1, device='cuda', dtype=torch.float)
-        box = out['left'].bbox
-        labels = out['left'].get_field('labels')
-        scores = out['left'].get_field('scores')
-        trackids = out['left'].get_field('trackids')
-        box3d = out['left'].get_field('box3d').convert('xyzhwl_ry').bbox_3d
-        nobj = box.shape[0]
-        out_tensor[:nobj, :4] = box
-        out_tensor[:nobj, 4] = labels
-        out_tensor[:nobj, 5] = scores
-        out_tensor[:nobj, 6] = trackids
-        out_tensor[:nobj, 7:] = box3d
-        return out_tensor
+class YolactOnnx(nn.Module):
+    def __init__(self, model):
+        super(YolactOnnx, self).__init__()
+        self.model = model.yolact_tracking.yolact
 
     def forward(self, inputs):
         """
-        :param inputs: 4x3xhxw
+        :param inputs: 1x3x300x600
         :return:
         """
-        dps = self.inputs_to_dps(inputs)
-        out, loss_dict = self.model(dps)
-        out_tensor = self.out_to_tensor(out)
-        return out_tensor
+        # dps = self.inputs_to_dps(inputs)
+        pred_outs, outs = self.model.forward_onnx(inputs)
+        return pred_outs, outs
 
 
 def main():
@@ -127,31 +76,55 @@ def main():
     trainer = build_trainer(cfg)
     trainer.resume()
 
+    torch_triu = torch.triu
+
+    def triu_onnx(x, diagonal=0, out=None):
+        # if x.ndim == 3:
+        #     assert x.shape[0] == 1
+        #     x = x[0]
+        assert out is None
+        assert len(x.shape) == 3 and x.size(1) == x.size(2)
+        x = x[0]
+        template = torch_triu(torch.ones((1024, 1024), dtype=torch.uint8, device=x.device),
+                              diagonal)  # 1024 is max sequence length
+        mask = template[:x.size(0), :x.size(1)]
+        return torch.where(mask.bool(), x, torch.zeros_like(x))[None]
+
+    torch.triu = triu_onnx
+    # torch.onnx.export(...)  # export your model here
+    # torch.triu = torch_triu
+
     valid_ds = trainer.valid_dl.dataset
     data0 = valid_ds[0]
     calib = data0['targets']['left'].extra_fields['calib']
     model = trainer.model
-    # model.cpu()
-    model = FCN_ResNet101(model, calib)
+    model = YolactOnnx(model)
     model.eval()
 
     # Generate input tensor with random values
     input_tensor = torch.rand(4, 3, 375, 1242)
     input_tensor = input_tensor.cuda()
 
-    # output_tensor = model(input_tensor.cuda())
+    dps = torch.load('tmp/dps.pth')
+    input_tensor[0, :, :, :] = dps['original_images']['left'][0].permute(2, 0, 1)
+    input_tensor[1, :, :, :] = dps['original_images']['right'][0].permute(2, 0, 1)
+    input_tensor[2, :, :300, :600] = dps['images']['left'][0]
+    input_tensor[3, :, :300, :600] = dps['images']['right'][0]
+
+    # output_tensor = model(input_tensor)
 
     # Export torch model to ONNX
+    # torch.jit.script(model, input_tensor)
     print("Exporting ONNX model {}".format(output_onnx))
     torch.onnx.export(model, input_tensor, output_onnx,
-                      # opset_version=12,
-                      do_constant_folding=True,
+                      opset_version=12,
+                      do_constant_folding=False,
                       input_names=["input"],
                       output_names=["output"],
                       # dynamic_axes={"input": {0: "batch", 2: "height", 3: "width"},
                       #               "output": {0: "batch"}
                       #               },
-                      verbose=True)
+                      verbose=False)
 
 
 if __name__ == '__main__':

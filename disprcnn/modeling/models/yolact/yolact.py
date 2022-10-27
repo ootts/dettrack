@@ -249,6 +249,76 @@ class Yolact(nn.Module):
                 rets = rets, outs
             return rets
 
+    def forward_onnx(self, image):
+        x = image
+        _, _, img_h, img_w = x.size()
+        _tmp_img_h = img_h
+        _tmp_img_w = img_w
+
+        outs = self.backbone(x)
+
+        if self.cfg.fpn is not None:
+            # Use backbone.selected_layers because we overwrote self.selected_layers
+            outs = [outs[i] for i in self.cfg.backbone.selected_layers]
+            outs = self.fpn(outs)
+
+        proto_x = x if self.proto_src is None else outs[self.proto_src]
+
+        if self.num_grids > 0:
+            grids = self.grid.repeat(proto_x.size(0), 1, 1, 1)
+            proto_x = torch.cat([proto_x, grids], dim=1)
+
+        proto_out = self.proto_net(proto_x)
+        proto_out = F.relu(proto_out, inplace=True)
+
+        # Move the features last so the multiplication is easy
+        proto_out = proto_out.permute(0, 2, 3, 1).contiguous()
+
+        pred_outs = {'loc': [], 'conf': [], 'mask': [], 'priors': []}
+
+        for idx, pred_layer in zip(self.selected_layers, self.prediction_layers):
+            pred_x = outs[idx]
+
+            # A hack for the way dataparallel works
+            if self.cfg.share_prediction_module and pred_layer is not self.prediction_layers[0]:
+                pred_layer.parent = [self.prediction_layers[0]]
+
+            p = pred_layer(pred_x, _tmp_img_w, _tmp_img_h)
+
+            for k, v in p.items():
+                pred_outs[k].append(v)
+
+        for k, v in pred_outs.items():
+            pred_outs[k] = torch.cat(v, -2)
+
+        if proto_out is not None:
+            pred_outs['proto'] = proto_out
+
+        if self.training:
+            # For the extra loss functions
+            if self.cfg.use_class_existence_loss:
+                pred_outs['classes'] = self.class_existence_fc(outs[-1].mean(dim=(2, 3)))
+
+            if self.cfg.use_semantic_segmentation_loss:
+                pred_outs['segm'] = self.semantic_seg_conv(outs[0])
+
+            return pred_outs
+        else:
+            assert not self.cfg.use_mask_scoring
+            # pred_outs['score'] = torch.sigmoid(pred_outs['score'])
+
+            assert not self.cfg.use_focal_loss
+            assert not self.cfg.use_objectness_score
+            pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
+            # if return_features:
+            return pred_outs, outs
+            # else:
+            #     return pred_outs
+            # rets = self.detect(pred_outs, self)
+            # if return_features:
+            #     rets = rets, outs
+            # return rets
+
 
 class YolactWrapper(nn.Module):
     def __init__(self, cfg):

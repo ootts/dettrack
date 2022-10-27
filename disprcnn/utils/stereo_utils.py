@@ -227,3 +227,7 @@ def expand_box_to_integer(box):
     x2 = math.ceil(x2)
     y2 = math.ceil(y2)
     return x1, y1, x2, y2
+
+
+def expand_box_to_integer_torch(box):
+    return torch.cat((torch.floor(box).long()[:2], torch.ceil(box).long()[2:]))

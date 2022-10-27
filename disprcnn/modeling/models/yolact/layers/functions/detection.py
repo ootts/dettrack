@@ -121,7 +121,8 @@ class Detect(object):
         iou = jaccard(boxes_idx, boxes_idx)
 
         # Zero out the lower triangle of the cosine similarity matrix and diagonal
-        iou.triu_(diagonal=1)
+        iou = torch.triu(iou, diagonal=1)
+        # iou.triu_(diagonal=1)
 
         # Now that everything in the diagonal and below is zeroed out, if we take the max
         # of the IoU matrix along the columns, each column will represent the maximum IoU
@@ -147,7 +148,8 @@ class Detect(object):
         masks = masks[idx.view(-1), :].view(num_classes, num_dets, -1)
 
         iou = jaccard(boxes, boxes)
-        iou.triu_(diagonal=1)
+        iou = torch.triu(iou, diagonal=1)
+        # iou.triu_(diagonal=1)
         iou_max, _ = iou.max(dim=1)
 
         # Now just filter out the ones higher than the threshold

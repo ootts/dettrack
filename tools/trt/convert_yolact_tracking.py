@@ -48,11 +48,11 @@ class YolactTrackingHeadOnnx(nn.Module):
 
     def forward(self, inputs):
         """
-        :param inputs: 1x3x300x600
+        :param inputs: 2x3x112x112
         :return:
         """
-        # dps = self.inputs_to_dps(inputs)
-        pred_outs = self.model.forward_onnx(inputs)
+        x, ref_x = inputs[:1], inputs[1:]
+        pred_outs = self.model.forward_onnx(x, ref_x)
         return pred_outs
 
 
@@ -74,24 +74,6 @@ def main():
     trainer = build_trainer(cfg)
     trainer.resume()
 
-    torch_triu = torch.triu
-
-    def triu_onnx(x, diagonal=0, out=None):
-        # if x.ndim == 3:
-        #     assert x.shape[0] == 1
-        #     x = x[0]
-        assert out is None
-        assert len(x.shape) == 3 and x.size(1) == x.size(2)
-        x = x[0]
-        template = torch_triu(torch.ones((1024, 1024), dtype=torch.uint8, device=x.device),
-                              diagonal)  # 1024 is max sequence length
-        mask = template[:x.size(0), :x.size(1)]
-        return torch.where(mask.bool(), x, torch.zeros_like(x))[None]
-
-    torch.triu = triu_onnx
-    # torch.onnx.export(...)  # export your model here
-    # torch.triu = torch_triu
-
     valid_ds = trainer.valid_dl.dataset
     data0 = valid_ds[0]
     calib = data0['targets']['left'].extra_fields['calib']
@@ -101,19 +83,10 @@ def main():
     model.cpu()
 
     # Generate input tensor with random values
-    input_tensor = torch.rand(2, 3, 300, 600)
-    # input_tensor = input_tensor.cuda()
-
-    # dps = torch.load('tmp/dps.pth')
-    # input_tensor[0, :, :, :] = dps['original_images']['left'][0].permute(2, 0, 1)
-    # input_tensor[1, :, :, :] = dps['original_images']['right'][0].permute(2, 0, 1)
-    # input_tensor[2, :, :300, :600] = dps['images']['left'][0]
-    # input_tensor[3, :, :300, :600] = dps['images']['right'][0]
-
-    # output_tensor = model(input_tensor)
+    input_tensor = torch.rand(2, 256, 7, 7)
 
     # Export torch model to ONNX
-    # torch.jit.script(model, input_tensor)
+
     print("Exporting ONNX model {}".format(output_onnx))
     torch.onnx.export(model, input_tensor, output_onnx,
                       opset_version=12,

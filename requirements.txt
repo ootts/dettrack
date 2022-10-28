@@ -13,7 +13,7 @@ scikit-image
 imageio
 tensorboard
 numba
-pytorch_ssim
+#pytorch_ssim
 pybind11==2.8.1
 open3d
 scripts/wis3d-1.0.0-py3-none-any.whl

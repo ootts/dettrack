@@ -44,7 +44,7 @@ output_onnx = "tmp/yolact_tracking_head.onnx"
 class YolactTrackingHeadOnnx(nn.Module):
     def __init__(self, model):
         super(YolactTrackingHeadOnnx, self).__init__()
-        self.model = model.yolact_tracking.yolact
+        self.model = model.yolact_tracking.track_head
 
     def forward(self, inputs):
         """

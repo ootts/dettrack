@@ -37,21 +37,22 @@ from disprcnn.utils.logger import setup_logger
 import torch
 import torch.nn as nn
 
+output_onnx = "tmp/pointpillars.onnx"
+
 
 # FC-ResNet101 pretrained model from torch-hub extended with argmax layer
-class IDispnetOnnx(nn.Module):
+class PointPillarsOnnx(nn.Module):
     def __init__(self, model):
-        super(IDispnetOnnx, self).__init__()
-        self.model = model.idispnet
+        super(PointPillarsOnnx, self).__init__()
+        self.model = model.pointpillars
 
-    def forward(self, left, right):
+    def forward(self, inputs):
         """
         :param inputs: 2x3x112x112
         :return:
         """
-        # N = inputs.shape[0] // 2
-        # left, right = inputs[:1], inputs[1:]
-        pred_outs = self.model.forward_onnx(left, right)
+        x, ref_x = inputs[:1], inputs[1:]
+        pred_outs = self.model.forward_onnx(x, ref_x)
         return pred_outs
 
 
@@ -77,32 +78,25 @@ def main():
     data0 = valid_ds[0]
     calib = data0['targets']['left'].extra_fields['calib']
     model = trainer.model
-    model = IDispnetOnnx(model)
+    model = PointPillarsOnnx(model)
     model.eval()
-    model.cuda()
+    model.cpu()
 
-    left_tensor = torch.rand(1, 3, 112, 112).float().cuda()
-    right_tensor = torch.rand(1, 3, 112, 112).float().cuda()
-    output_onnx = "tmp/idispnet_2.onnx"
+    # Generate input tensor with random values
+    input_tensor = torch.rand(2, 256, 7, 7)
+
+    # Export torch model to ONNX
 
     print("Exporting ONNX model {}".format(output_onnx))
-    torch.onnx.export(model, (left_tensor, right_tensor), output_onnx,
+    torch.onnx.export(model, input_tensor, output_onnx,
                       opset_version=12,
                       do_constant_folding=True,
-                      input_names=["left_input", "right_input"],
+                      input_names=["input"],
                       output_names=["output"],
-                      # dynamic_axes={"input": {0: "batch"},
+                      # dynamic_axes={"input": {0: "batch", 2: "height", 3: "width"},
                       #               "output": {0: "batch"}
                       #               },
                       verbose=False)
-
-    print('simplifying')
-    simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
-    os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
-
-    print('to engine')
-    os.system(
-        f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --saveEngine={simp_onnx.replace('.onnx', '.engine')}  --tacticSources=-cublasLt,+cublas")
 
 
 if __name__ == '__main__':

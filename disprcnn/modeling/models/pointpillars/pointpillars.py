@@ -114,7 +114,7 @@ class PointPillars(nn.Module):
             self.load_state_dict(ckpt['model'])
 
     def forward(self, dps):
-        return torch.load('tmp/output.pth'), {}
+        # return torch.load('tmp/output.pth'), {}
         vis3d = Vis3D(
             xyz_pattern=('x', '-y', '-z'),
             out_folder="dbg",

@@ -445,7 +445,7 @@ class DRCNN(nn.Module):
             print()
 
     def prepare_pointpillars_input(self, dps, left_result, right_result):
-        return torch.load('tmp/example.pth')
+        # return torch.load('tmp/example.pth')
         vis3d = Vis3D(
             xyz_pattern=('x', '-y', '-z'),
             out_folder="dbg",

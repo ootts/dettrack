@@ -1,3 +1,4 @@
+import os.path as osp
 import torch
 import tensorrt as trt
 
@@ -18,3 +19,13 @@ def torch_device_to_trt(device):
         return trt.TensorLocation.HOST
     else:
         return TypeError('%s is not supported by tensorrt' % device)
+
+
+TRT_LOGGER = trt.Logger()
+
+
+def load_engine(engine_file_path):
+    assert osp.exists(engine_file_path)
+    print("Reading engine from file {}".format(engine_file_path))
+    with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
+        return runtime.deserialize_cuda_engine(f.read())

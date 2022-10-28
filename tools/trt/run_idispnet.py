@@ -15,7 +15,7 @@ from disprcnn.utils.trt_utils import torch_device_from_trt
 TRT_LOGGER = trt.Logger()
 
 # Filenames of TensorRT plan file and input/output images.
-engine_file = "tmp/idispnet-100.engine"
+engine_file = "tmp/idispnet_2-simp.engine"
 
 
 def infer(engine, left, right):
@@ -33,13 +33,17 @@ def infer(engine, left, right):
         for i in range(N):
             evaltime('for loop begin')
             bindings = []
-            input_image = torch.stack([left[i], right[i]], 0)
+            # input_image = left[i], right[i]], 0)
             for binding in engine:
                 binding_idx = engine.get_binding_index(binding)
                 if engine.binding_is_input(binding):
-                    inputs_torch = input_image.to(torch_device_from_trt(engine.get_location(binding_idx)))
-                    inputs_torch = inputs_torch.type(torch_dtype_from_trt(engine.get_binding_dtype(binding_idx)))
-                    bindings.append(int(inputs_torch.data_ptr()))
+                    if binding == 'left_input':
+                        inputs = left[i][None].to(torch_device_from_trt(engine.get_location(binding_idx)))
+                        inputs = inputs.type(torch_dtype_from_trt(engine.get_binding_dtype(binding_idx)))
+                    else:
+                        inputs = right[i][None].to(torch_device_from_trt(engine.get_location(binding_idx)))
+                        inputs = inputs.type(torch_dtype_from_trt(engine.get_binding_dtype(binding_idx)))
+                    bindings.append(int(inputs.data_ptr()))
                 else:
                     dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
                     shape = tuple(engine.get_binding_shape(binding_idx))

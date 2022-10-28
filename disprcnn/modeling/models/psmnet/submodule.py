@@ -100,7 +100,7 @@ def single_modal_weight_average_v4(x: torch.Tensor):  # 1min 41s
 
 
 def disparityregression(x, maxdisp, mindisp=0, single_modal_weight_average=False, interval=1):
-    assert x.shape[1] == int((maxdisp - mindisp) / interval)
+    # assert x.shape[1] == int((maxdisp - mindisp) / interval)
     bsz, disp_range, H, W = x.shape
     disp = torch.arange(mindisp, maxdisp, interval).reshape((1, disp_range, 1, 1)).float().to(x.device)
     disp = disp.repeat((bsz, 1, H, W))

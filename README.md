@@ -61,3 +61,8 @@ tensorboard --logdir models/drcnn/kitti_tracking/pointpillars_112_demo/evaltime/
 # Then open localhost:6006 in your browser and you should see a running time curve.
 ```
 
+
+
+## TensorRT
+
+https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar

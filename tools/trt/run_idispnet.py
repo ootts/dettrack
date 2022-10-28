@@ -13,20 +13,11 @@ from disprcnn.utils.timer import EvalTime
 TRT_LOGGER = trt.Logger()
 
 # Filenames of TensorRT plan file and input/output images.
-engine_file = "tmp/yolact.engine"
+engine_file = "tmp/idispnet-100.engine"
 
 
-def load_engine(engine_file_path):
-    assert os.path.exists(engine_file_path)
-    print("Reading engine from file {}".format(engine_file_path))
-    with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
-        return runtime.deserialize_cuda_engine(f.read())
-
-
-def infer(engine, detector, input_file1, input_file2):
-    img1 = preprocess(input_file1)
-    img2 = preprocess(input_file2)
-    input_image = np.stack([img1, img2])
+def infer(engine, left, right):
+    input_image = np.stack([left, right])
     evaltime = EvalTime()
     # evaltime('begin')
     with engine.create_execution_context() as context:
@@ -74,41 +65,20 @@ def infer(engine, detector, input_file1, input_file2):
     # print()
 
 
-def preprocess(input_file):
-    image = cv2.imread(input_file)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = np.repeat(image[:, :, None], 3, axis=-1)
-    image = image.astype(np.float32)
-    img_h, img_w, _ = image.shape
-    width, height = 600, 300
-    image = cv2.resize(image, (width, height))
-    image = image.astype(np.float32)
-    mean = np.array([103.94, 116.78, 123.68])
-    std = np.array([57.38, 57.12, 58.4])
-    image = (image - mean) / std
-    image = image[:, :, [2, 1, 0]]
-    image = image.astype(np.float32)
-    image = np.transpose(image, [2, 0, 1])
-    return image
+def load_engine(engine_file_path):
+    assert os.path.exists(engine_file_path)
+    print("Reading engine from file {}".format(engine_file_path))
+    with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
+        return runtime.deserialize_cuda_engine(f.read())
 
 
 def main():
-    from disprcnn.engine.defaults import setup
-    from disprcnn.engine.defaults import default_argument_parser
-    parser = default_argument_parser()
-    args = parser.parse_args()
-    args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
-    cfg = setup(args)
-
-    input_file1 = "data/kitti/tracking/training/image_02/0001/000000.png"
-    input_file2 = "data/kitti/tracking/training/image_03/0001/000000.png"
-    yolact_cfg = cfg.model.yolact
-    detector = Detect(yolact_cfg, yolact_cfg.num_classes, bkg_label=0, top_k=yolact_cfg.nms_top_k,
-                      conf_thresh=yolact_cfg.nms_conf_thresh, nms_thresh=yolact_cfg.nms_thresh)
-
+    left_roi_images, right_roi_images = torch.load('tmp/left_right_roi_images.pth')
+    left_roi_images = left_roi_images.cpu().numpy()
+    right_roi_images = right_roi_images.cpu().numpy()
     with load_engine(engine_file) as engine:
         for _ in range(10000):
-            infer(engine, detector, input_file1, input_file2)
+            infer(engine, left_roi_images, right_roi_images)
 
 
 if __name__ == '__main__':

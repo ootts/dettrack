@@ -50,7 +50,9 @@ def infer(engine, left, right):
             # Transfer input data to the GPU.
             cuda.memcpy_htod_async(input_memory, input_buffer, stream)
             # Run inference
+            evaltime('')
             context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
+            evaltime('trt')
             # Transfer prediction output from the GPU.
             cuda.memcpy_dtoh_async(output_buffer, output_memory, stream)
         # Synchronize the stream
@@ -71,8 +73,8 @@ def main():
     left_roi_images = left_roi_images.cpu().numpy()
     right_roi_images = right_roi_images.cpu().numpy()
     with load_engine(engine_file) as engine:
-        # for _ in range(10000):
-        infer(engine, left_roi_images, right_roi_images)
+        for _ in range(10000):
+            infer(engine, left_roi_images, right_roi_images)
 
 
 if __name__ == '__main__':

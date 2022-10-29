@@ -11,13 +11,13 @@ import torch
 import torch.nn as nn
 
 
-class PointPillarsOnnx(nn.Module):
+class PointPillarsPart2Onnx(nn.Module):
     def __init__(self, model):
-        super(PointPillarsOnnx, self).__init__()
+        super(PointPillarsPart2Onnx, self).__init__()
         self.model = model.pointpillars
 
-    def forward(self, voxels, num_points, coordinates):
-        return self.model.forward_onnx(voxels, num_points, coordinates)
+    def forward(self, spatial_features):
+        return self.model.forward_onnx_part2(spatial_features)
 
 
 def main():
@@ -42,49 +42,39 @@ def main():
     data0 = valid_ds[0]
     calib = data0['targets']['left'].extra_fields['calib']
     model = trainer.model
-    model = PointPillarsOnnx(model)
+    model = PointPillarsPart2Onnx(model)
     model.eval()
     model.cpu()
 
-    pp_input = torch.load('tmp/pp_input.pth', 'cpu')
-    voxels = pp_input['voxels']
-    num_points = pp_input['num_points']
-    coordinates = pp_input['coordinates']
-    rect = pp_input['rect']
-    Trv2c = pp_input['Trv2c']
-    P2 = pp_input['P2']
-    anchors = pp_input['anchors']
-    anchors_mask = pp_input['anchors_mask']
-    width = torch.tensor([pp_input['width']])
-    height = torch.tensor([pp_input['height']])
+    spatial_features = torch.load('tmp/spatial_features.pth', 'cpu')
 
-    output_onnx = osp.join(cfg.trt.onnx_path, "pointpillars.onnx")
+    output_onnx = osp.join(cfg.trt.onnx_path, "pointpillars_part2.onnx")
 
     print("Exporting ONNX model {}".format(output_onnx))
-    torch.onnx.export(model, (voxels, num_points, coordinates),
+    torch.onnx.export(model, spatial_features,
                       output_onnx,
                       opset_version=12,
                       do_constant_folding=True,
-                      input_names=["voxels", "num_points", "coordinates"],
-                      output_names=["output"],
-                      dynamic_axes={
-                          "voxels": {0: "batch"},
-                          "num_points": {0: "batch"},
-                          "coordinates": {0: "batch"},
-                          "output": {0: "batch"},
-                      },
+                      input_names=["input"],
+                      output_names=["box_preds", "cls_preds", "dir_cls_preds"],
+                      # dynamic_axes={
+                      #     "voxels": {0: "batch"},
+                      #     "num_points": {0: "batch"},
+                      #     "coordinates": {0: "batch"},
+                      #     "output": {0: "batch"},
+                      # },
                       verbose=False)
     simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
     os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
 
     print('to engine')
-    engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine")
+    engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars_part2.engine")
     cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --saveEngine={engine_path}  --tacticSources=-cublasLt,+cublas"
     if cfg.trt.convert_to_trt.fp16:
         cmd = cmd + " --fp16"
-    cmd = cmd + " --minShapes=voxels:100x100x4,num_points:100,coordinates:100x4" \
-                " --optShapes=voxels:1403x100x4,num_points:1403,coordinates:1403x4" \
-                " --maxShapes=voxels:3000x100x4,num_points:3000,coordinates:3000x4"
+    # cmd = cmd + " --minShapes=voxels:100x100x4,num_points:100,coordinates:100x4" \
+    #             " --optShapes=voxels:1403x100x4,num_points:1403,coordinates:1403x4" \
+    #             " --maxShapes=voxels:3000x100x4,num_points:3000,coordinates:3000x4"
     os.system(cmd)
 
 

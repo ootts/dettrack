@@ -248,6 +248,25 @@ class PointPillars(nn.Module):
             output = {'left': result, 'right': result}
             return output, {}
 
+    def forward_onnx(self, voxels, num_points, coordinates):
+        voxels = voxels
+        coors = coordinates
+        # batch_anchors = anchors
+        # batch_size_dev = batch_anchors.shape[0]
+        voxel_features = self.voxel_feature_extractor(voxels, num_points, coors)
+        # spatial_features = self.middle_feature_extractor(voxel_features, coors, batch_size_dev)
+
+        return voxel_features
+        # return box_preds, cls_preds, dir_cls_preds
+        # return output, {}
+
+    def forward_onnx_part2(self, spatial_features):
+        preds_dict = self.rpn(spatial_features)
+        box_preds = preds_dict["box_preds"]
+        cls_preds = preds_dict["cls_preds"]
+        dir_cls_preds = preds_dict['dir_cls_preds']
+        return box_preds, cls_preds, dir_cls_preds
+
     def predict(self, example, preds_dict):
         # t = time.time()
         batch_size = example['anchors'].shape[0]

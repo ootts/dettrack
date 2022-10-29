@@ -2,7 +2,6 @@ import numpy as np
 import torch
 
 from disprcnn.utils.ppp_utils.box_torch_ops import rotation_2d
-from disprcnn.utils.ppp_utils.non_max_suppression import nms_gpu
 
 
 def nms(bboxes,
@@ -10,6 +9,7 @@ def nms(bboxes,
         pre_max_size=None,
         post_max_size=None,
         iou_threshold=0.5):
+    from disprcnn.utils.ppp_utils.non_max_suppression import nms_gpu
     if pre_max_size is not None:
         num_keeped_scores = scores.shape[0]
         pre_max_size = min(num_keeped_scores, pre_max_size)

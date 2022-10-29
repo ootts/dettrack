@@ -6,11 +6,11 @@ import pycuda.driver as cuda
 import tensorrt as trt
 from torch.fx.experimental.fx2trt import torch_dtype_from_trt
 
-from disprcnn.modeling.models.psmnet.submodule import disparityregression
+from disprcnn.modeling.models.pointpillars.ops import center_to_corner_box2d, corner_to_standup_nd, box_lidar_to_camera, \
+    center_to_corner_box3d, project_to_image
 from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
 from disprcnn.utils.timer import EvalTime
 from disprcnn.utils.trt_utils import load_engine, torch_device_from_trt
-import torch.nn.functional as F
 
 
 class PointPillarsPart2Inference:
@@ -93,6 +93,7 @@ class PointPillarsPart2Inference:
         batch_dir_preds = batch_dir_preds.view(batch_size, -1, 2)
 
         from disprcnn.modeling.models.pointpillars import ops
+        from disprcnn.utils.utils_3d import pytorch_nms
         predictions_dicts = []
         for box_preds, cls_preds, dir_preds, rect, Trv2c, P2, a_mask in zip(
                 batch_box_preds, batch_cls_preds, batch_dir_preds, batch_rect,
@@ -104,21 +105,9 @@ class PointPillarsPart2Inference:
             if a_mask is not None:
                 dir_preds = dir_preds[a_mask.bool()]
             dir_labels = torch.max(dir_preds, dim=-1)[1]
-            # if self.encode_background_as_zeros:
-            # this don't support softmax
-            # assert self.use_sigmoid_score is True
             total_scores = torch.sigmoid(cls_preds)
-            # else:
-            #     encode background as first element in one-hot vector
-            # if self.use_sigmoid_score:
-            #     total_scores = torch.sigmoid(cls_preds)[..., 1:]
-            # else:
-            #     total_scores = F.softmax(cls_preds, dim=-1)[..., 1:]
-            # Apply NMS in birdeye view
-            # assert not self.use_rotate_nms
-            # nms_func = box_torch_ops.rotate_nms
-            # else:
-            nms_func = ops.nms
+            # nms_func = ops.nms
+            nms_func = pytorch_nms
             selected_boxes = None
             selected_labels = None
             selected_scores = None
@@ -146,10 +135,10 @@ class PointPillarsPart2Inference:
                     dir_labels = dir_labels[top_scores_keep]
                     top_labels = top_labels[top_scores_keep]
                 boxes_for_nms = box_preds[:, [0, 1, 3, 4, 6]]
-                box_preds_corners = ops.center_to_corner_box2d(
+                box_preds_corners = center_to_corner_box2d(
                     boxes_for_nms[:, :2], boxes_for_nms[:, 2:4],
                     boxes_for_nms[:, 4])
-                boxes_for_nms = ops.corner_to_standup_nd(
+                boxes_for_nms = corner_to_standup_nd(
                     box_preds_corners)
                 # the nms in 3d detection just remove overlap boxes.
                 selected = nms_func(
@@ -186,15 +175,15 @@ class PointPillarsPart2Inference:
                 final_box_preds = box_preds
                 final_scores = scores
                 final_labels = label_preds
-                final_box_preds_camera = ops.box_lidar_to_camera(
+                final_box_preds_camera = box_lidar_to_camera(
                     final_box_preds, rect, Trv2c)
                 locs = final_box_preds_camera[:, :3]
                 dims = final_box_preds_camera[:, 3:6]
                 angles = final_box_preds_camera[:, 6]
                 camera_box_origin = [0.5, 1.0, 0.5]
-                box_corners = ops.center_to_corner_box3d(
+                box_corners = center_to_corner_box3d(
                     locs, dims, angles, camera_box_origin, axis=1)
-                box_corners_in_image = ops.project_to_image(
+                box_corners_in_image = project_to_image(
                     box_corners, P2)
                 # box_corners_in_image: [N, 8, 2]
                 minxy = torch.min(box_corners_in_image, dim=1)[0]

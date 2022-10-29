@@ -23,9 +23,7 @@ class YolactInference:
         context = engine.create_execution_context()
 
         # prepare buffer
-        # host_inputs = []
         cuda_inputs = []
-        # host_outputs = {}
         cuda_outputs = {}
         bindings = []
 
@@ -36,22 +34,17 @@ class YolactInference:
             device = torch_device_from_trt(engine.get_location(binding_idx))
             cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
 
-            # bindings.append(int(cuda_mem))
             bindings.append(int(cuda_mem.data_ptr()))
             if engine.binding_is_input(binding):
-                # host_inputs.append(host_mem)
                 cuda_inputs.append(cuda_mem)
             else:
-                # host_outputs[binding] = host_mem
                 cuda_outputs[binding] = cuda_mem
         # store
         self.stream = stream
         self.context = context
         self.engine = engine
 
-        # self.host_inputs = host_inputs
         self.cuda_inputs = cuda_inputs
-        # self.host_outputs = host_outputs
         self.cuda_outputs = cuda_outputs
         self.bindings = bindings
 

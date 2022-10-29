@@ -61,32 +61,32 @@ class TotalInference:
 
         self.idispnet_inf = IDispnetInference(
             osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine"))
-
-        self.pointpillars_inf = PointPillarsPart1Inference(
-            osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine"))
-
-        self.pointpillars_part2_inf = PointPillarsPart2Inference(
-            osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars_part2.engine"))
-
         self.roi_align = RoIAlign((112, 112), 1.0, 0)
-        self.voxel_generator = build_voxel_generator(self.cfg.voxel_generator)
-        box_coder = GroundBox3dCoderTorch()
-        self.target_assigner = build_target_assigner(self.cfg.model.pointpillars.target_assigner, box_coder)
-        feature_map_size = [1, 248, 216]
-        ret = self.target_assigner.generate_anchors(feature_map_size)  # [352, 400]
-        anchors = torch.from_numpy(ret["anchors"]).cuda()
-        anchors = anchors.reshape([-1, 7])
-        matched_thresholds = torch.from_numpy(ret["matched_thresholds"]).cuda()
-        unmatched_thresholds = torch.from_numpy(ret["unmatched_thresholds"]).cuda()
-        anchors_bv = rbbox2d_to_near_bbox(anchors[:, [0, 1, 3, 4, 6]])
-        self.anchor_cache = {
-            "anchors": anchors,
-            "anchors_bv": anchors_bv,
-            "matched_thresholds": matched_thresholds,
-            "unmatched_thresholds": unmatched_thresholds,
-        }
-        self.middle_feature_extractor = PointPillarsScatter(output_shape=[1, 1, 496, 432, 64],
-                                                            num_input_features=64)
+
+        # self.pointpillars_inf = PointPillarsPart1Inference(
+        #     osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine"))
+        #
+        # self.pointpillars_part2_inf = PointPillarsPart2Inference(
+        #     osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars_part2.engine"))
+        #
+        # self.voxel_generator = build_voxel_generator(self.cfg.voxel_generator)
+        # box_coder = GroundBox3dCoderTorch()
+        # self.target_assigner = build_target_assigner(self.cfg.model.pointpillars.target_assigner, box_coder)
+        # feature_map_size = [1, 248, 216]
+        # ret = self.target_assigner.generate_anchors(feature_map_size)  # [352, 400]
+        # anchors = torch.from_numpy(ret["anchors"]).cuda()
+        # anchors = anchors.reshape([-1, 7])
+        # matched_thresholds = torch.from_numpy(ret["matched_thresholds"]).cuda()
+        # unmatched_thresholds = torch.from_numpy(ret["unmatched_thresholds"]).cuda()
+        # anchors_bv = rbbox2d_to_near_bbox(anchors[:, [0, 1, 3, 4, 6]])
+        # self.anchor_cache = {
+        #     "anchors": anchors,
+        #     "anchors_bv": anchors_bv,
+        #     "matched_thresholds": matched_thresholds,
+        #     "unmatched_thresholds": unmatched_thresholds,
+        # }
+        # self.middle_feature_extractor = PointPillarsScatter(output_shape=[1, 1, 496, 432, 64],
+        #                                                     num_input_features=64)
 
     def infer(self, input_file1, input_file2):
         evaltime = EvalTime()
@@ -118,14 +118,14 @@ class TotalInference:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)
         evaltime('idispnet forward')
-        pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
-        self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
-        voxel_features = self.pointpillars_inf.cuda_outputs['output'].clone()
-        spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
-                                                         pp_input["anchors"].shape[0])
-        pp_output = self.pointpillars_part2_inf.predict(spatial_features, pp_input['anchors'],
-                                                        pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
-                                                        pp_input['anchors_mask'])
+        # pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
+        # self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
+        # voxel_features = self.pointpillars_inf.cuda_outputs['output'].clone()
+        # spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
+        #                                                  pp_input["anchors"].shape[0])
+        # pp_output = self.pointpillars_part2_inf.predict(spatial_features, pp_input['anchors'],
+        #                                                 pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
+        #                                                 pp_input['anchors_mask'])
         print()
 
     #     anchors, rect, Trv2c, P2, anchors_mask

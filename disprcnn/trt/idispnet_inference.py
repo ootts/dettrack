@@ -46,6 +46,8 @@ class IDispnetInference:
         self.bindings = bindings
 
     def infer(self, left_images, right_images):
+        evaltime = EvalTime('')
+        evaltime('idispnet infer begin')
         self.context.set_binding_shape(self.engine.get_binding_index("left_input"),
                                        (left_images.shape[0], 3, 112, 112))
         self.context.set_binding_shape(self.engine.get_binding_index("right_input"),
@@ -64,10 +66,9 @@ class IDispnetInference:
             else:
                 self.cuda_outputs[binding] = cuda_mem
 
-        evaltime = EvalTime()
+        evaltime('prep done')
         self.ctx.push()
-
-        evaltime("")
+        evaltime("push ctx")
         # restore
         stream = self.stream
         context = self.context

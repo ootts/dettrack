@@ -1,16 +1,13 @@
 import os.path as osp
-import torch
-import os
-
 import cv2
 import numpy as np
-import os
 import pycuda.driver as cuda
-import pycuda.autoinit
-import tensorrt as trt
 
-import matplotlib.pyplot as plt
-from PIL import Image
+# import pycuda.autoinit
+cuda.init()
+device = cuda.Device(0)
+ctx = device.make_context()
+import tensorrt as trt
 
 from disprcnn.modeling.models.yolact.layers import Detect
 from disprcnn.modeling.models.yolact.layers.box_utils import decode
@@ -27,6 +24,9 @@ def infer(engine, detector, input_file1, input_file2):
     evaltime = EvalTime()
 
     with engine.create_execution_context() as context:
+        # device = cuda.Device(0)
+        # context = device.make_context()
+        # ctx.push()
         bindings = []
         output_buffers = {}
         output_memories = {}
@@ -59,13 +59,15 @@ def infer(engine, detector, input_file1, input_file2):
             cuda.memcpy_dtoh_async(output_buffers[k], output_memories[k], stream)
         # Synchronize the stream
         stream.synchronize()
-
+    # ctx.pop()
+    # del context
     # pred_outs = {'loc': torch.from_numpy(loc).cuda(),
     #              'conf': torch.from_numpy(conf).cuda(),
     #              'mask': torch.from_numpy(mask).cuda(),
     #              'priors': torch.from_numpy(prior).cuda(),
     #              'proto': torch.from_numpy(proto).cuda()}
     # dets_2d = detector(pred_outs)
+    # ref = torch.load('tmp/yolact_out_ref.pth')
     print()
     # evaltime('decode')
     # print()
@@ -106,8 +108,10 @@ def main():
 
     engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "yolact.engine")
     with load_engine(engine_file) as engine:
-        for _ in range(10000):
-            infer(engine, detector, input_file1, input_file2)
+        # for _ in range(10000):
+        ctx.push()
+        infer(engine, detector, input_file1, input_file2)
+        ctx.pop()
 
 
 if __name__ == '__main__':

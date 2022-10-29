@@ -1,3 +1,4 @@
+import os.path as osp
 import torch
 import os
 
@@ -10,7 +11,7 @@ from torch.fx.experimental.fx2trt import torch_dtype_from_trt
 
 from disprcnn.modeling.models.yolact.layers import Detect
 from disprcnn.utils.timer import EvalTime
-from disprcnn.utils.trt_utils import torch_device_from_trt
+from disprcnn.utils.trt_utils import torch_device_from_trt, load_engine, bind_array_to_input, bind_array_to_output
 
 TRT_LOGGER = trt.Logger()
 
@@ -33,50 +34,50 @@ def infer(engine, left, right):
         for i in range(N):
             evaltime('for loop begin')
             bindings = []
-            # input_image = left[i], right[i]], 0)
             for binding in engine:
                 binding_idx = engine.get_binding_index(binding)
+                size = trt.volume(context.get_binding_shape(binding_idx))
+                dtype = trt.nptype(engine.get_binding_dtype(binding))
                 if engine.binding_is_input(binding):
                     if binding == 'left_input':
-                        inputs = left[i][None].to(torch_device_from_trt(engine.get_location(binding_idx)))
-                        inputs = inputs.type(torch_dtype_from_trt(engine.get_binding_dtype(binding_idx)))
+                        input_buffer, input_memory = bind_array_to_input(left[i][None], bindings)
                     else:
-                        inputs = right[i][None].to(torch_device_from_trt(engine.get_location(binding_idx)))
-                        inputs = inputs.type(torch_dtype_from_trt(engine.get_binding_dtype(binding_idx)))
-                    bindings.append(int(inputs.data_ptr()))
+                        input_buffer, input_memory = bind_array_to_input(right[i][None], bindings)
                 else:
-                    dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
-                    shape = tuple(engine.get_binding_shape(binding_idx))
-                    device = torch_device_from_trt(engine.get_location(binding_idx))
-                    output = torch.empty(size=shape, dtype=dtype, device=device)
-                    output_buffers.append(output)
-                    bindings.append(int(output.data_ptr()))
+                    output_buffer, output_memory = bind_array_to_output(size, dtype, bindings)
+                    output_buffers.append(output_buffer)
 
             stream = cuda.Stream()
             streams.append(stream)
             # Transfer input data to the GPU.
+            cuda.memcpy_htod_async(input_memory, input_buffer, stream)
             # Run inference
             evaltime('trt begin')
             context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
             evaltime('trt end')
             # Transfer prediction output from the GPU.
+            cuda.memcpy_dtoh_async(output_buffer, output_memory, stream)
         # Synchronize the stream
         for i in range(N):
             streams[i].synchronize()
     print((torch.load('tmp/outputs.pth') - torch.cat(output_buffers)).abs().max())
 
 
-def load_engine(engine_file_path):
-    assert os.path.exists(engine_file_path)
-    print("Reading engine from file {}".format(engine_file_path))
-    with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
-        return runtime.deserialize_cuda_engine(f.read())
-
-
 def main():
+    from disprcnn.engine.defaults import setup
+    from disprcnn.engine.defaults import default_argument_parser
+    from disprcnn.data import make_data_loader
+    parser = default_argument_parser()
+    args = parser.parse_args()
+    args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
+    cfg = setup(args)
+
     left_roi_images, right_roi_images = torch.load('tmp/left_right_roi_images.pth')
-    # left_roi_images = left_roi_images.cpu().numpy()
-    # right_roi_images = right_roi_images.cpu().numpy()
+    left_roi_images = left_roi_images.cpu().numpy()[0:1]
+    right_roi_images = right_roi_images.cpu().numpy()[0:1]
+
+    # engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine")
+    engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet2-100.engine")
     with load_engine(engine_file) as engine:
         # for _ in range(10000):
         infer(engine, left_roi_images, right_roi_images)

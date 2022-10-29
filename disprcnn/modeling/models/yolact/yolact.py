@@ -301,6 +301,7 @@ class Yolact(nn.Module):
         assert not self.cfg.use_focal_loss
         assert not self.cfg.use_objectness_score
         pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
+        return pred_outs['loc'], pred_outs['conf'], pred_outs['mask'], pred_outs['priors'], pred_outs['proto'], outs[0]
         unified_out = torch.zeros([image.shape[0], 11481, 4 + 2 + 32 + 4 + 32 + 75], device='cuda', dtype=torch.float32)
         unified_out[:, :, :4] = pred_outs['loc']
         unified_out[:, :, 4:4 + 2] = pred_outs['conf']

@@ -52,8 +52,7 @@ class YolactOnnx(nn.Module):
         :return:
         """
         # dps = self.inputs_to_dps(inputs)
-        pred_outs = self.model.forward_onnx(inputs)
-        return pred_outs
+        return self.model.forward_onnx(inputs)
 
 
 def main():
@@ -119,7 +118,8 @@ def main():
                       opset_version=12,
                       do_constant_folding=True,
                       input_names=["input"],
-                      output_names=["output"],
+                      # output_names=["output"],
+                      output_names=['loc', 'conf', 'mask', 'priors', 'proto', 'feat_out'],
                       # dynamic_axes={"input": {0: "batch", 2: "height", 3: "width"},
                       #               "output": {0: "batch"}
                       #               },

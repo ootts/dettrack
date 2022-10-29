@@ -37,6 +37,8 @@ def infer(engine, detector, input_file1, input_file2):
 
     with engine.create_execution_context() as context:
         bindings = []
+        output_buffers = {}
+        output_memories = {}
         for binding in engine:
             binding_idx = engine.get_binding_index(binding)
             size = trt.volume(context.get_binding_shape(binding_idx))
@@ -51,6 +53,8 @@ def infer(engine, detector, input_file1, input_file2):
                 # output_memory = cuda.mem_alloc(output_buffer.nbytes)
                 # bindings.append(int(output_memory))
                 output_buffer, output_memory = bind_array_to_output(size, dtype, bindings)
+                output_buffers[binding] = output_buffer
+                output_memories[binding] = output_memory
 
         stream = cuda.Stream()
         # Transfer input data to the GPU.
@@ -60,24 +64,25 @@ def infer(engine, detector, input_file1, input_file2):
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
         # evaltime('output')
         # Transfer prediction output from the GPU.
-        cuda.memcpy_dtoh_async(output_buffer, output_memory, stream)
+        for k in output_buffers.keys():
+            cuda.memcpy_dtoh_async(output_buffers[k], output_memories[k], stream)
         # Synchronize the stream
         stream.synchronize()
 
-    unified_out = output_buffer.reshape(2, 11481, -1)
-    loc = unified_out[:, :, :4]
-    conf = unified_out[:, :, 4:4 + 2]
-    mask = unified_out[:, :, 4 + 2:4 + 2 + 32]
-    prior = unified_out[:, :, 4 + 2 + 32:4 + 2 + 32 + 4][0]
-    proto = unified_out[:, :11400, 4 + 2 + 32 + 4:4 + 2 + 32 + 4 + 32].reshape(2, 76, 150, 32)
-    feat_out = unified_out[:, :9728, 4 + 2 + 32 + 4 + 32:].reshape(2, 256, 38, 75)
-
-    pred_outs = {'loc': torch.from_numpy(loc).cuda(),
-                 'conf': torch.from_numpy(conf).cuda(),
-                 'mask': torch.from_numpy(mask).cuda(),
-                 'priors': torch.from_numpy(prior).cuda(),
-                 'proto': torch.from_numpy(proto).cuda()}
-    dets_2d = detector(pred_outs)
+    # unified_out = output_buffer.reshape(2, 11481, -1)
+    # loc = unified_out[:, :, :4]
+    # conf = unified_out[:, :, 4:4 + 2]
+    # mask = unified_out[:, :, 4 + 2:4 + 2 + 32]
+    # prior = unified_out[:, :, 4 + 2 + 32:4 + 2 + 32 + 4][0]
+    # proto = unified_out[:, :11400, 4 + 2 + 32 + 4:4 + 2 + 32 + 4 + 32].reshape(2, 76, 150, 32)
+    # feat_out = unified_out[:, :9728, 4 + 2 + 32 + 4 + 32:].reshape(2, 256, 38, 75)
+    #
+    # pred_outs = {'loc': torch.from_numpy(loc).cuda(),
+    #              'conf': torch.from_numpy(conf).cuda(),
+    #              'mask': torch.from_numpy(mask).cuda(),
+    #              'priors': torch.from_numpy(prior).cuda(),
+    #              'proto': torch.from_numpy(proto).cuda()}
+    # dets_2d = detector(pred_outs)
     print()
     # evaltime('decode')
     # print()

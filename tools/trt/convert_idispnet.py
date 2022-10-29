@@ -50,8 +50,8 @@ def main():
     model.eval()
     model.cuda()
 
-    left_tensor = torch.rand(1, 3, 112, 112).float().cuda()
-    right_tensor = torch.rand(1, 3, 112, 112).float().cuda()
+    left_tensor = torch.rand(20, 3, 112, 112).float().cuda()
+    right_tensor = torch.rand(20, 3, 112, 112).float().cuda()
 
     # Export torch model to ONNX
     output_onnx = osp.join(cfg.trt.onnx_path, "idispnet.onnx")

@@ -228,14 +228,14 @@ class PSMNet(nn.Module):
         for i in range(-6, 6):
             if i < 0:
                 tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
-                                  torch.zeros([1, 32, 28, -i]).cuda().float()], dim=-1)
+                                  torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
                 tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
-                                  torch.zeros([1, 32, 28, -i]).cuda().float()], dim=-1)
+                                  torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
                 costs.append(torch.cat([tmp1, tmp2], dim=1))
             elif i > 0:
-                tmp1 = torch.cat([torch.zeros([1, 32, 28, i]).cuda().float(),
+                tmp1 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
                                   refimg_fea[:, :, :, i:]], dim=-1)
-                tmp2 = torch.cat([torch.zeros([1, 32, 28, i]).cuda().float(),
+                tmp2 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
                                   targetimg_fea[:, :, :, :Wp - i]], dim=-1)
                 costs.append(torch.cat([tmp1, tmp2], dim=1))
             else:

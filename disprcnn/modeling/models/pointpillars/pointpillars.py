@@ -213,11 +213,11 @@ class PointPillars(nn.Module):
             box3d = box3d[:, [0, 1, 2, 4, 5, 3, 6]][keep]
             box2d = pred_dict[0]['bbox'][keep]
             labels = pred_dict[0]['label_preds'][keep] + 1
-            KITTIROOT = osp.expanduser('~/Datasets/kitti')
             imgid = dps['image_idx'][0].item()
             if 'width' in dps and 'height' in dps:
                 h, w = dps['height'], dps['width']
             else:
+                KITTIROOT = osp.expanduser('~/Datasets/kitti')
                 h, w, _ = load_image_info(KITTIROOT, 'training', imgid)
             result = BoxList(box2d, (w, h))
             box3d = Box3DList(box3d, "xyzhwl_ry")

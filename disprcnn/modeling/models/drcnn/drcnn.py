@@ -249,59 +249,6 @@ class DRCNN(nn.Module):
             self.vis_final_result(dps, left_result, right_result)
         return outputs, loss_dict
 
-    @torch.no_grad()
-    def forward_onnx(self, dps):
-        left_result, _ = self.yolact_tracking({
-            'global_step': dps['global_step'],
-            'image': dps['images']['left'],
-            'seq': dps['seq'],
-            'width': dps['width'],
-            'height': dps['height'],
-        }, track=True, add_mask=True, mask_mode=self.cfg.mask_mode)
-        right_result, _ = self.yolact_tracking({
-            'global_step': dps['global_step'],
-            'image': dps['images']['right'],
-            'seq': dps['seq'],
-            'width': dps['width'],
-            'height': dps['height'],
-        }, track=False, add_mask=False)
-        left_result, right_result = self.match_lp_rp(left_result, right_result,
-                                                     dps['original_images']['left'][0],
-                                                     dps['original_images']['right'][0])
-        left_result.add_field('imgid', dps['imgid'][0].item())
-        right_result.add_field('imgid', dps['imgid'][0].item())
-        # left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = self.prepare_idispnet_input(dps,
-        #                                                                                             left_result,
-        #                                                                                             right_result)
-        # if len(left_roi_images) > 0:
-        #     disp_output = self.idispnet({'left': left_roi_images, 'right': right_roi_images})
-        # else:
-        #     disp_output = torch.zeros((0, self.idispnet.input_size, self.idispnet.input_size)).cuda()
-        # left_result.add_field('disparity', disp_output)
-        # pp_input = self.prepare_pointpillars_input(dps, left_result, right_result)
-        # pp_output, pp_loss_dict = self.pointpillars(pp_input)
-        #
-        # if len(left_result) == 0:
-        #     box3d = torch.empty([0, 7]).cuda().float()
-        #     left_result.add_field('box3d', box3d)
-        # elif len(pp_output['left']) == 0:
-        #     box3d = torch.ones([0, 7]).float().cuda()
-        #     left_result.add_field('box3d', box3d)
-        # else:
-        #     # iou = boxlist_iou(left_result, pp_output['left'])
-        #     # maxiou, maxiouidx = iou.max(1)
-        #     # box3d = pp_output['left'].get_field('box3d').bbox_3d[maxiouidx]
-        #     # indices = [0]
-        #     box3d = pp_output['left'].get_field('box3d').bbox_3d.reshape(-1, 7)
-        #
-        #     box3d = box3d[0][None].repeat(6, 1)
-        #     print(box3d.shape)
-        #     # box3d = torch.ones([6, 7]).float().cuda()
-        #     left_result.add_field('box3d', box3d)
-        #     # return {'left': torch.load('tmp/left_result.pth')}
-        # left_result.remove_map('masks')
-        return {'left': left_result}
-
     def decode_yolact_preds(self, preds, h, w, add_mask=True, retvalid=False):
         evaltime = EvalTime(disable=True)
         evaltime('')

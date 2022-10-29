@@ -14,15 +14,21 @@ from torchvision.ops import RoIAlign
 from disprcnn.data import make_data_loader
 from disprcnn.engine.defaults import setup
 from disprcnn.engine.defaults import default_argument_parser
+from disprcnn.modeling.models.pointpillars.submodules import PointPillarsScatter
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.modeling.models.yolact.layers import Detect
 from disprcnn.structures.calib import Calib
 from disprcnn.trt.idispnet_inference import IDispnetInference
 from disprcnn.trt.pointpillars_part1_inference import PointPillarsPart1Inference
+from disprcnn.trt.pointpillars_part2_inference import PointPillarsPart2Inference
 from disprcnn.trt.yolact_inference import YolactInference
 from disprcnn.trt.yolact_tracking_head_inference import YolactTrackingHeadInference
 from disprcnn.utils.pn_utils import to_tensor, to_array
-from disprcnn.utils.ppp_utils.box_np_ops import sparse_sum_for_anchors_mask, fused_get_anchors_area
+from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
+from disprcnn.utils.ppp_utils.box_np_ops import sparse_sum_for_anchors_mask, fused_get_anchors_area, \
+    rbbox2d_to_near_bbox
+from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
+from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
 from disprcnn.utils.pytorch_ssim import ssim
 from disprcnn.utils.stereo_utils import expand_box_to_integer_torch
 from disprcnn.utils.timer import EvalTime
@@ -60,9 +66,27 @@ class TotalInference:
             osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine"))
 
         self.pointpillars_part2_inf = PointPillarsPart2Inference(
-            osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine"))
+            osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars_part2.engine"))
 
         self.roi_align = RoIAlign((112, 112), 1.0, 0)
+        self.voxel_generator = build_voxel_generator(self.cfg.voxel_generator)
+        box_coder = GroundBox3dCoderTorch()
+        self.target_assigner = build_target_assigner(self.cfg.model.pointpillars.target_assigner, box_coder)
+        feature_map_size = [1, 248, 216]
+        ret = self.target_assigner.generate_anchors(feature_map_size)  # [352, 400]
+        anchors = torch.from_numpy(ret["anchors"]).cuda()
+        anchors = anchors.reshape([-1, 7])
+        matched_thresholds = torch.from_numpy(ret["matched_thresholds"]).cuda()
+        unmatched_thresholds = torch.from_numpy(ret["unmatched_thresholds"]).cuda()
+        anchors_bv = rbbox2d_to_near_bbox(anchors[:, [0, 1, 3, 4, 6]])
+        self.anchor_cache = {
+            "anchors": anchors,
+            "anchors_bv": anchors_bv,
+            "matched_thresholds": matched_thresholds,
+            "unmatched_thresholds": unmatched_thresholds,
+        }
+        self.middle_feature_extractor = PointPillarsScatter(output_shape=[1, 1, 496, 432, 64],
+                                                            num_input_features=64)
 
     def infer(self, input_file1, input_file2):
         evaltime = EvalTime()
@@ -94,6 +118,17 @@ class TotalInference:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)
         evaltime('idispnet forward')
+        pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
+        self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
+        voxel_features = self.pointpillars_inf.cuda_outputs['output'].clone()
+        spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
+                                                         pp_input["anchors"].shape[0])
+        pp_output = self.pointpillars_part2_inf.predict(spatial_features, pp_input['anchors'],
+                                                        pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
+                                                        pp_input['anchors_mask'])
+        print()
+
+    #     anchors, rect, Trv2c, P2, anchors_mask
 
     def match_lp_rp(self, lp, rp, img2, img3):
         W, H = lp.size
@@ -214,15 +249,16 @@ class TotalInference:
         Trv2c = torch.eye(4).cuda().float()
         Trv2c[:3, :4] = to_tensor(calib.V2C, torch.float, 'cuda')
         # augmentation
-        if self.cfg.detector_3d.shuffle_points:
-            perm = np.random.permutation(points.shape[0])
-            points = points[perm]
+        # if self.cfg.detector_3d.shuffle_points:
+        #     perm = np.random.permutation(points.shape[0])
+        #     points = points[perm]
         points = torch.cat([points, torch.full_like(points[:, 0:1], 0.5)], dim=1)
         voxel_size = voxel_generator.voxel_size
         pc_range = voxel_generator.point_cloud_range
         grid_size = voxel_generator.grid_size
         p = to_array(points)
-        voxels, coordinates, num_points = voxel_generator.generate(p, self.cfg.detector_3d.max_number_of_voxels)
+        voxels, coordinates, num_points = voxel_generator.generate(p,
+                                                                   self.cfg.model.drcnn.detector_3d.max_number_of_voxels)
 
         coordinates = torch.from_numpy(coordinates).long().cuda()
         voxels = torch.from_numpy(voxels).cuda()
@@ -242,7 +278,7 @@ class TotalInference:
         # unmatched_thresholds = anchor_cache["unmatched_thresholds"]
         example["anchors"] = anchors[None]
         # anchors_mask = None
-        anchor_area_threshold = self.cfg.detector_3d.anchor_area_threshold
+        anchor_area_threshold = self.cfg.model.drcnn.detector_3d.anchor_area_threshold
         if anchor_area_threshold >= 0:
             coors = coordinates
             dense_voxel_map = sparse_sum_for_anchors_mask(to_array(coors), tuple(grid_size[::-1][1:]))
@@ -253,7 +289,7 @@ class TotalInference:
             anchors_mask = torch.from_numpy(anchors_area > anchor_area_threshold).cuda()
             example['anchors_mask'] = anchors_mask[None]
         example['coordinates'] = torch.cat([torch.full_like(coordinates[:, 0:1], 0), example['coordinates']], dim=1)
-        example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid']).cuda()]
+        # example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid']).cuda()]
         example['calib'] = calib
         example['width'] = width
         example['height'] = height

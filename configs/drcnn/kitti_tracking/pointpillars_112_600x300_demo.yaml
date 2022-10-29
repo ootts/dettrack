@@ -33,6 +33,7 @@ model:
 trt:
   onnx_path: "tmp"
   convert_to_trt:
+    #    fp16: True
     output_path: "tmp"
 datasets:
   train: ("kittitrackingstereo_demo",)

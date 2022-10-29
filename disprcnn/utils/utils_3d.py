@@ -13,6 +13,7 @@ from dl_ext.vision_ext.datasets.kitti.structures import Calibration
 from multipledispatch import dispatch
 from packaging import version
 from scipy.spatial.distance import cdist
+from torchvision.ops import nms
 
 from disprcnn.utils.pn_utils import padded_stack, to_tensor, to_array
 from disprcnn.utils.tsdf_fusion_python import get_view_frustum, TSDFVolume
@@ -1816,3 +1817,29 @@ def open3d_plane_segment_api(pts, distance_threshold, ransac_n=3, num_iterations
                                               ransac_n=ransac_n,
                                               num_iterations=num_iterations)
     return plane_model, inliers
+
+
+def pytorch_nms(bboxes,
+                scores,
+                pre_max_size=None,
+                post_max_size=None,
+                iou_threshold=0.5):
+    if pre_max_size is not None:
+        num_keeped_scores = scores.shape[0]
+        pre_max_size = min(num_keeped_scores, pre_max_size)
+        scores, indices = torch.topk(scores, k=pre_max_size)
+        bboxes = bboxes[indices]
+    if len(bboxes) == 0:
+        keep = torch.tensor([], dtype=torch.long).cuda()
+    else:
+        m = bboxes.min()
+        bboxes = bboxes + m
+        ret = nms(bboxes, scores, iou_threshold)
+        keep = ret[:post_max_size]
+    if keep.shape[0] == 0:
+        return None
+    if pre_max_size is not None:
+        # keep = torch.from_numpy(keep).long().cuda()
+        return indices[keep]
+    else:
+        return torch.from_numpy(keep).long().cuda()

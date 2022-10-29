@@ -14,13 +14,19 @@ from torchvision.ops import RoIAlign
 from disprcnn.data import make_data_loader
 from disprcnn.engine.defaults import setup
 from disprcnn.engine.defaults import default_argument_parser
+from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.modeling.models.yolact.layers import Detect
+from disprcnn.structures.calib import Calib
 from disprcnn.trt.idispnet_inference import IDispnetInference
+from disprcnn.trt.pointpillars_part1_inference import PointPillarsPart1Inference
 from disprcnn.trt.yolact_inference import YolactInference
 from disprcnn.trt.yolact_tracking_head_inference import YolactTrackingHeadInference
+from disprcnn.utils.pn_utils import to_tensor, to_array
+from disprcnn.utils.ppp_utils.box_np_ops import sparse_sum_for_anchors_mask, fused_get_anchors_area
 from disprcnn.utils.pytorch_ssim import ssim
 from disprcnn.utils.stereo_utils import expand_box_to_integer_torch
 from disprcnn.utils.timer import EvalTime
+from disprcnn.utils.utils_3d import matrix_3x4_to_4x4
 
 
 class TotalInference:
@@ -49,6 +55,12 @@ class TotalInference:
 
         self.idispnet_inf = IDispnetInference(
             osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine"))
+
+        self.pointpillars_inf = PointPillarsPart1Inference(
+            osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine"))
+
+        self.pointpillars_part2_inf = PointPillarsPart2Inference(
+            osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine"))
 
         self.roi_align = RoIAlign((112, 112), 1.0, 0)
 
@@ -183,6 +195,69 @@ class TotalInference:
         std = torch.tensor([0.229, 0.224, 0.225]).float().cuda()
         im.sub_(mean[None, :, None, None]).div_(std[None, :, None, None])
         return im
+
+    def prepare_pointpillars_input(self, left_result, right_result, width, height):
+        dmp = DisparityMapProcessor()
+        voxel_generator = self.voxel_generator
+        disparity_map = dmp(left_result, right_result)
+        calib = self.calib
+        calib = Calib(calib, (calib.width, calib.height), 'cuda')
+        pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
+        keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
+               (pts_rect[:, 1] > -3) & (pts_rect[:, 1] < 3) \
+               & (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
+        # keep = (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
+        pts_rect = pts_rect[keep]
+        points = calib.rect_to_lidar(pts_rect)
+        rect = torch.eye(4).cuda().float()
+        rect[:3, :3] = to_tensor(calib.R0, torch.float, 'cuda')
+        Trv2c = torch.eye(4).cuda().float()
+        Trv2c[:3, :4] = to_tensor(calib.V2C, torch.float, 'cuda')
+        # augmentation
+        if self.cfg.detector_3d.shuffle_points:
+            perm = np.random.permutation(points.shape[0])
+            points = points[perm]
+        points = torch.cat([points, torch.full_like(points[:, 0:1], 0.5)], dim=1)
+        voxel_size = voxel_generator.voxel_size
+        pc_range = voxel_generator.point_cloud_range
+        grid_size = voxel_generator.grid_size
+        p = to_array(points)
+        voxels, coordinates, num_points = voxel_generator.generate(p, self.cfg.detector_3d.max_number_of_voxels)
+
+        coordinates = torch.from_numpy(coordinates).long().cuda()
+        voxels = torch.from_numpy(voxels).cuda()
+        num_points = torch.from_numpy(num_points).long().cuda()
+        example = {
+            'voxels': voxels,
+            'num_points': num_points,
+            'coordinates': coordinates,
+            'rect': rect[None],
+            'Trv2c': Trv2c[None],
+            'P2': to_tensor(matrix_3x4_to_4x4(calib.P2), torch.float, 'cuda')[None],
+        }
+        anchor_cache = self.anchor_cache
+        anchors = anchor_cache["anchors"]
+        anchors_bv = anchor_cache["anchors_bv"]
+        # matched_thresholds = anchor_cache["matched_thresholds"]
+        # unmatched_thresholds = anchor_cache["unmatched_thresholds"]
+        example["anchors"] = anchors[None]
+        # anchors_mask = None
+        anchor_area_threshold = self.cfg.detector_3d.anchor_area_threshold
+        if anchor_area_threshold >= 0:
+            coors = coordinates
+            dense_voxel_map = sparse_sum_for_anchors_mask(to_array(coors), tuple(grid_size[::-1][1:]))
+            dense_voxel_map = dense_voxel_map.cumsum(0)
+            dense_voxel_map = dense_voxel_map.cumsum(1)
+            anchors_area = fused_get_anchors_area(dense_voxel_map, to_array(anchors_bv),
+                                                  voxel_size, pc_range, grid_size)
+            anchors_mask = torch.from_numpy(anchors_area > anchor_area_threshold).cuda()
+            example['anchors_mask'] = anchors_mask[None]
+        example['coordinates'] = torch.cat([torch.full_like(coordinates[:, 0:1], 0), example['coordinates']], dim=1)
+        example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid']).cuda()]
+        example['calib'] = calib
+        example['width'] = width
+        example['height'] = height
+        return example
 
     def destroy(self):
         self.yolact_inf.destory()

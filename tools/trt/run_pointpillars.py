@@ -1,6 +1,3 @@
-import pdb
-import time
-
 import torch
 import os.path as osp
 import cv2
@@ -102,24 +99,6 @@ class Inference:
 
     def destory(self):
         self.ctx.pop()
-
-
-def preprocess(input_file):
-    image = cv2.imread(input_file)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = np.repeat(image[:, :, None], 3, axis=-1)
-    image = image.astype(np.float32)
-    img_h, img_w, _ = image.shape
-    width, height = 600, 300
-    image = cv2.resize(image, (width, height))
-    image = image.astype(np.float32)
-    mean = np.array([103.94, 116.78, 123.68])
-    std = np.array([57.38, 57.12, 58.4])
-    image = (image - mean) / std
-    image = image[:, :, [2, 1, 0]]
-    image = image.astype(np.float32)
-    image = np.transpose(image, [2, 0, 1])
-    return image
 
 
 def main():

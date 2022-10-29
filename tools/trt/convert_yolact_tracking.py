@@ -1,59 +1,27 @@
+import os.path as osp
 import os
-# import torchvision.models as models
-#
-# resnext50_32x4d = models.resnext50_32x4d(pretrained=True)
-#
-# import torch
-#
-# BATCH_SIZE = 64
-# dummy_input = torch.randn(BATCH_SIZE, 3, 224, 224)
-#
-# import torch.onnx
-#
-# torch.onnx.export(resnext50_32x4d, dummy_input, "tmp/resnet50_onnx_model.onnx", verbose=False)
 from disprcnn.config import cfg
-from PIL import Image
-from io import BytesIO
-import requests
-
 from disprcnn.engine.defaults import default_argument_parser
-from disprcnn.structures.bounding_box import BoxList
-from disprcnn.structures.bounding_box_3d import Box3DList
-from disprcnn.structures.boxlist_ops import boxlist_iou
 from disprcnn.trainer.build import build_trainer
 from disprcnn.utils.comm import get_rank
 from disprcnn.utils.logger import setup_logger
 
-# output_image = "tmp/input.ppm"
-#
-# # Read sample image input and save it in ppm format
-# print("Exporting ppm image {}".format(output_image))
-# response = requests.get("https://pytorch.org/assets/images/deeplab1.png")
-# with Image.open(BytesIO(response.content)) as img:
-#     ppm = Image.new("RGB", img.size, (255, 255, 255))
-#     ppm.paste(img, mask=img.split()[3])
-#     ppm.save(output_image)
-
 import torch
 import torch.nn as nn
 
-output_onnx = "tmp/yolact_tracking_head.onnx"
 
-
-# FC-ResNet101 pretrained model from torch-hub extended with argmax layer
 class YolactTrackingHeadOnnx(nn.Module):
     def __init__(self, model):
         super(YolactTrackingHeadOnnx, self).__init__()
         self.model = model.yolact_tracking.track_head
 
-    def forward(self, inputs):
+    def forward(self, x, ref_x):
         """
-        :param inputs: 2x3x112x112
+        :param x: M,C,7,7
+        :param ref_x: N,C,7,7
         :return:
         """
-        x, ref_x = inputs[:1], inputs[1:]
-        pred_outs = self.model.forward_onnx(x, ref_x)
-        return pred_outs
+        return self.model.forward_onnx(x, ref_x)
 
 
 def main():
@@ -70,7 +38,7 @@ def main():
         cfg.dataloader.num_workers = 0
     cfg.mode = 'test'
     cfg.freeze()
-    logger = setup_logger(cfg.output_dir, get_rank(), 'logtest.txt')
+    # logger = setup_logger(cfg.output_dir, get_rank(), 'logtest.txt')
     trainer = build_trainer(cfg)
     trainer.resume()
 
@@ -83,20 +51,35 @@ def main():
     model.cpu()
 
     # Generate input tensor with random values
-    input_tensor = torch.rand(2, 256, 7, 7)
+    x = torch.rand(7, 256, 7, 7)
+    ref_x = torch.rand(8, 256, 7, 7)
 
     # Export torch model to ONNX
-
+    output_onnx = osp.join(cfg.trt.onnx_path, "yolact_tracking_head.onnx")
     print("Exporting ONNX model {}".format(output_onnx))
-    torch.onnx.export(model, input_tensor, output_onnx,
+    torch.onnx.export(model, (x, ref_x), output_onnx,
                       opset_version=12,
                       do_constant_folding=True,
-                      input_names=["input"],
+                      input_names=["x", "ref_x"],
                       output_names=["output"],
-                      # dynamic_axes={"input": {0: "batch", 2: "height", 3: "width"},
-                      #               "output": {0: "batch"}
-                      #               },
+                      dynamic_axes={
+                          "x": {0: "batch1"},
+                          "ref_x": {0: "batch2"},
+                          "output": {0: "height", 1: "width"}
+                      },
                       verbose=False)
+    simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
+    os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
+
+    print('to engine')
+    engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "yolact_tracking_head.engine")
+    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --saveEngine={engine_path}  --tacticSources=-cublasLt,+cublas"
+    if cfg.trt.convert_to_trt.fp16:
+        cmd = cmd + " --fp16"
+    cmd = cmd + " --minShapes=x:1x256x7x7,ref_x:1x256x7x7" \
+                " --optShapes=x:10x256x7x7,ref_x:10x256x7x7" \
+                " --maxShapes=x:200x256x7x7,ref_x:200x256x7x7"
+    os.system(cmd)
 
 
 if __name__ == '__main__':

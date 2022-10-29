@@ -112,23 +112,12 @@ class TrackHead(nn.Module):
             if idx < len(self.fcs) - 1:
                 x = self.relu(x)
                 ref_x = self.relu(ref_x)
-        n = 1
-        # x_split = x
-        # ref_x_split = ref_x
-        # prods = []
-        # for i in range(n):
+        # n = 1
         prod = torch.mm(x, torch.transpose(ref_x, 0, 1))
-        return prod
-        # prods.append(prod)
-        # match_score = []
-        # for prod in prods:
-        # m = prod.size(0)
-        # dummy = torch.zeros(m, 1).to(prod.device).float()
-        #
-        # match_score = torch.cat([dummy, prod], dim=1)
-        # return match_score
-        # match_score.append(prod_ext)
-        # return match_score
+        m = prod.shape[0]
+        dummy = torch.zeros([m, 1]).to(prod.device)
+        prod_ext = torch.cat([dummy, prod], dim=1)
+        return prod_ext
 
     def loss(self, match_score, ids, id_weights, reduce=True):
         losses = dict()

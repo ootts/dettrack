@@ -20,17 +20,6 @@ from disprcnn.utils.trt_utils import bind_array_to_input, bind_array_to_output, 
 TRT_LOGGER = trt.Logger()
 
 
-# Filenames of TensorRT plan file and input/output images.
-# engine_file = "tmp/yolact-100.engine"
-
-
-# def load_engine(engine_file_path):
-#     assert os.path.exists(engine_file_path)
-#     print("Reading engine from file {}".format(engine_file_path))
-#     with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
-#         return runtime.deserialize_cuda_engine(f.read())
-
-
 def infer(engine, detector, input_file1, input_file2):
     img1 = preprocess(input_file1)
     img2 = preprocess(input_file2)

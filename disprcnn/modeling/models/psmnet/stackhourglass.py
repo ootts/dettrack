@@ -224,38 +224,51 @@ class PSMNet(nn.Module):
         targetimg_fea = self.feature_extraction(right)
         _, C, Hp, Wp = refimg_fea.shape
         C, Hp, Wp = 32, 28, 28
-        costs = []
-        for i in range(-6, 0):
-            tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
-                              torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
-            tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
-                              torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
-            costs.append(torch.cat([tmp1, tmp2], dim=1))
-        costs.append(torch.cat([refimg_fea, targetimg_fea], dim=1))
-        for i in range(1, 6):
-            tmp1 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
-                              refimg_fea[:, :, :, i:]], dim=-1)
-            tmp2 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
-                              targetimg_fea[:, :, :, :Wp - i]], dim=-1)
-            costs.append(torch.cat([tmp1, tmp2], dim=1))
+        # cost_volume = torch.zeros(bsz, C * 2, 12, Hp, Wp).float().to(refimg_fea.device)
         # for i in range(-6, 6):
         #     if i < 0:
-        #         tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
-        #                           torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
-        #         tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
-        #                           torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
-        #         costs.append(torch.cat([tmp1, tmp2], dim=1))
+        #         cost_volume[:, :C, i + 6, :, :i] = refimg_fea[:, :, :, :i]
+        #         cost_volume[:, C:, i + 6, :, :i] = targetimg_fea[:, :, :, -i:]
         #     elif i > 0:
-        #         tmp1 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
-        #                           refimg_fea[:, :, :, i:]], dim=-1)
-        #         tmp2 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
-        #                           targetimg_fea[:, :, :, :Wp - i]], dim=-1)
-        #         costs.append(torch.cat([tmp1, tmp2], dim=1))
+        #         cost_volume[:, :C, i + 6, :, i:] = refimg_fea[:, :, :, i:]
+        #         cost_volume[:, C:, i + 6, :, i:] = targetimg_fea[:, :, :, :-i]
         #     else:
-        #         costs.append(torch.cat([refimg_fea, targetimg_fea], dim=1))
+        #         cost_volume[:, :C, i + 6, :, :] = refimg_fea
+        #         cost_volume[:, C:, i + 6, :, :] = targetimg_fea
+        # cost = cost_volume
+        ##############  ↓ Step :   ↓  ##############
+        costs = []
+        # for i in range(-6, 0):
+        #     tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
+        #                       torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
+        #     tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
+        #                       torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
+        #     costs.append(torch.cat([tmp1, tmp2], dim=1))
+        # costs.append(torch.cat([refimg_fea, targetimg_fea], dim=1))
+        # for i in range(1, 6):
+        #     tmp1 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
+        #                       refimg_fea[:, :, :, i:]], dim=-1)
+        #     tmp2 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
+        #                       targetimg_fea[:, :, :, :Wp - i]], dim=-1)
+        #     costs.append(torch.cat([tmp1, tmp2], dim=1))
+        ##############  ↓ Step :   ↓  ##############
+        for i in range(-6, 6):
+            if i < 0:
+                tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
+                                  torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
+                tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
+                                  torch.zeros([bsz, C, Hp, -i]).cuda().float()], dim=-1)
+                costs.append(torch.cat([tmp1, tmp2], dim=1))
+            elif i > 0:
+                tmp1 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
+                                  refimg_fea[:, :, :, i:]], dim=-1)
+                tmp2 = torch.cat([torch.zeros([bsz, C, Hp, i]).cuda().float(),
+                                  targetimg_fea[:, :, :, :Wp - i]], dim=-1)
+                costs.append(torch.cat([tmp1, tmp2], dim=1))
+            else:
+                costs.append(torch.cat([refimg_fea, targetimg_fea], dim=1))
         cost = torch.stack(costs, dim=2)
         cost = cost.contiguous()
-        # return cost
         cost0 = self.dres0(cost)
         cost0 = self.dres1(cost0) + cost0
 

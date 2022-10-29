@@ -68,13 +68,6 @@ class IDispnetInference:
         self.ctx.push()
 
         evaltime("")
-        # N = left_images.shape[0]
-        # left_pad = torch.zeros([20 - N, 3, 112, 112]).float().to(left_images.device)
-        # left_images = torch.cat([left_images, left_pad], dim=0)
-        # right_pad = torch.zeros([20 - N, 3, 112, 112]).float().to(left_images.device)
-        # right_images = torch.cat([right_images, right_pad], dim=0)
-        # evaltime("pad")
-
         # restore
         stream = self.stream
         context = self.context
@@ -84,11 +77,6 @@ class IDispnetInference:
         # cuda_outputs = self.cuda_outputs
         bindings = self.bindings
 
-        # img1 = self.preprocess(input_file1)
-        # img2 = self.preprocess(input_file2)
-
-        # input_image = torch.stack([img1, img2]).cuda()
-        # np.copyto(host_inputs[0], input_image.ravel())
         cuda_inputs['left_input'].copy_(left_images)
         cuda_inputs['right_input'].copy_(right_images)
         evaltime("prep done")

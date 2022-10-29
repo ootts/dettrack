@@ -21,11 +21,11 @@ def main():
 
     inferencer = IDispnetInference(engine_file)
 
-    inferencer.infer(left_roi_images, right_roi_images)
+    pred_idisp = inferencer.predict_idisp(left_roi_images, right_roi_images)
     inferencer.destory()
 
     ref = torch.load('tmp/outputs.pth', 'cuda')
-    print((inferencer.cuda_outputs['output'][:6] - ref).abs().max())
+    print((pred_idisp - ref).abs().max())
 
 
 if __name__ == '__main__':

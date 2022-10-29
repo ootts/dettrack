@@ -67,12 +67,12 @@ def main():
                                     },
                       verbose=False)
 
-    # simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
-    # os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
+    simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
+    os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
 
     print('to engine')
     engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine")
-    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={output_onnx} --workspace=40960 --saveEngine={engine_path}  --tacticSources=-cublasLt,+cublas"
+    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --saveEngine={engine_path}  --tacticSources=-cublasLt,+cublas"
     if cfg.trt.convert_to_trt.fp16:
         cmd = cmd + " --fp16"
     cmd = cmd + " --minShapes=left_input:1x3x112x112,right_input:1x3x112x112" \

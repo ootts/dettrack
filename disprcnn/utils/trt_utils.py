@@ -1,3 +1,4 @@
+import numpy as np
 import os.path as osp
 import torch
 import tensorrt as trt
@@ -29,3 +30,19 @@ def load_engine(engine_file_path):
     print("Reading engine from file {}".format(engine_file_path))
     with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
         return runtime.deserialize_cuda_engine(f.read())
+
+
+def bind_array_to_input(inp, bindings):
+    import pycuda.driver as cuda
+    input_buffer = np.ascontiguousarray(inp)
+    input_memory = cuda.mem_alloc(inp.nbytes)
+    bindings.append(int(input_memory))
+    return input_buffer, input_memory
+
+
+def bind_array_to_output(size, dtype, bindings):
+    import pycuda.driver as cuda
+    output_buffer = cuda.pagelocked_empty(size, dtype)
+    output_memory = cuda.mem_alloc(output_buffer.nbytes)
+    bindings.append(int(output_memory))
+    return output_buffer, output_memory

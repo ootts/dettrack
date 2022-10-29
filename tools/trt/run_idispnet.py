@@ -26,7 +26,7 @@ def infer(engine, left, right):
     :return:
     """
     N = left.shape[0]
-    evaltime = EvalTime()
+    evaltime = EvalTime(disable=True)
     with engine.create_execution_context() as context:
         streams = []
         output_buffers = []
@@ -63,7 +63,7 @@ def infer(engine, left, right):
         # Synchronize the stream
         for i in range(N):
             streams[i].synchronize()
-    print()
+    print((torch.load('tmp/outputs.pth') - torch.cat(output_buffers)).abs().max())
 
 
 def load_engine(engine_file_path):
@@ -78,8 +78,8 @@ def main():
     # left_roi_images = left_roi_images.cpu().numpy()
     # right_roi_images = right_roi_images.cpu().numpy()
     with load_engine(engine_file) as engine:
-        for _ in range(10000):
-            infer(engine, left_roi_images, right_roi_images)
+        # for _ in range(10000):
+        infer(engine, left_roi_images, right_roi_images)
 
 
 if __name__ == '__main__':

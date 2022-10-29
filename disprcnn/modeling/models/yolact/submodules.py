@@ -19,6 +19,8 @@ from disprcnn.modeling.models.yolact.utils.functions import make_net
 # torch.cuda.current_device()
 
 use_jit = torch.cuda.device_count() <= 1
+use_jit = False
+print('!!')
 # if not use_jit:
 #     print('Multiple GPUs detected! Turning off JIT.')
 

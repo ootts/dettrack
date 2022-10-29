@@ -3,18 +3,14 @@ import os
 
 import cv2
 import numpy as np
-import os
 import pycuda.driver as cuda
 import pycuda.autoinit
 import tensorrt as trt
-
-import matplotlib.pyplot as plt
-from PIL import Image
+from torch.fx.experimental.fx2trt import torch_dtype_from_trt
 
 from disprcnn.modeling.models.yolact.layers import Detect
-from disprcnn.modeling.models.yolact.layers.box_utils import decode
 from disprcnn.utils.timer import EvalTime
-from disprcnn.utils.trt_utils import bind_array_to_input, bind_array_to_output
+from disprcnn.utils.trt_utils import torch_device_from_trt
 
 TRT_LOGGER = trt.Logger()
 
@@ -32,39 +28,34 @@ def load_engine(engine_file_path):
 def infer(engine, detector, input_file1, input_file2):
     img1 = preprocess(input_file1)
     img2 = preprocess(input_file2)
-    input_image = np.stack([img1, img2])
-    # evaltime = EvalTime()
-
+    input_image = torch.stack([img1, img2])
+    evaltime = EvalTime()
     with engine.create_execution_context() as context:
         bindings = []
         for binding in engine:
             binding_idx = engine.get_binding_index(binding)
-            size = trt.volume(context.get_binding_shape(binding_idx))
-            dtype = trt.nptype(engine.get_binding_dtype(binding))
             if engine.binding_is_input(binding):
-                # input_buffer = np.ascontiguousarray(input_image)
-                # input_memory = cuda.mem_alloc(input_image.nbytes)
-                input_buffer, input_memory = bind_array_to_input(input_image, bindings)
-                # bindings.append(int(input_memory))
+                inputs_torch = input_image.to(torch_device_from_trt(engine.get_location(binding_idx)))
+                inputs_torch = inputs_torch.type(torch_dtype_from_trt(engine.get_binding_dtype(binding_idx)))
+                bindings.append(int(inputs_torch.data_ptr()))
             else:
-                # output_buffer = cuda.pagelocked_empty(size, dtype)
-                # output_memory = cuda.mem_alloc(output_buffer.nbytes)
-                # bindings.append(int(output_memory))
-                output_buffer, output_memory = bind_array_to_output(size, dtype, bindings)
+                dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
+                shape = tuple(engine.get_binding_shape(binding_idx))
+                device = torch_device_from_trt(engine.get_location(binding_idx))
+                output = torch.empty(size=shape, dtype=dtype, device=device)
+                bindings.append(int(output.data_ptr()))
 
         stream = cuda.Stream()
-        # Transfer input data to the GPU.
-        cuda.memcpy_htod_async(input_memory, input_buffer, stream)
         # Run inference
-        # evaltime('')
+        evaltime('trt begin')
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-        # evaltime('output')
+        evaltime('trt end')
         # Transfer prediction output from the GPU.
-        cuda.memcpy_dtoh_async(output_buffer, output_memory, stream)
         # Synchronize the stream
         stream.synchronize()
-
-    unified_out = output_buffer.reshape(2, 11481, -1)
+    print()
+    # evaltime('trt forward')
+    unified_out = output.reshape(2, 11481, -1)
     loc = unified_out[:, :, :4]
     conf = unified_out[:, :, 4:4 + 2]
     mask = unified_out[:, :, 4 + 2:4 + 2 + 32]
@@ -72,15 +63,14 @@ def infer(engine, detector, input_file1, input_file2):
     proto = unified_out[:, :11400, 4 + 2 + 32 + 4:4 + 2 + 32 + 4 + 32].reshape(2, 76, 150, 32)
     feat_out = unified_out[:, :9728, 4 + 2 + 32 + 4 + 32:].reshape(2, 256, 38, 75)
 
-    pred_outs = {'loc': torch.from_numpy(loc).cuda(),
-                 'conf': torch.from_numpy(conf).cuda(),
-                 'mask': torch.from_numpy(mask).cuda(),
-                 'priors': torch.from_numpy(prior).cuda(),
-                 'proto': torch.from_numpy(proto).cuda()}
+    pred_outs = {'loc': loc,
+                 'conf': conf,
+                 'mask': mask,
+                 'priors': prior,
+                 'proto': proto}
     dets_2d = detector(pred_outs)
+    evaltime('decode')
     print()
-    # evaltime('decode')
-    # print()
 
 
 def preprocess(input_file):
@@ -98,13 +88,13 @@ def preprocess(input_file):
     image = image[:, :, [2, 1, 0]]
     image = image.astype(np.float32)
     image = np.transpose(image, [2, 0, 1])
+    image = torch.from_numpy(image).cuda()
     return image
 
 
 def main():
     from disprcnn.engine.defaults import setup
     from disprcnn.engine.defaults import default_argument_parser
-    from disprcnn.data import make_data_loader
     parser = default_argument_parser()
     args = parser.parse_args()
     args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'

@@ -1,3 +1,4 @@
+import os.path as osp
 import torch
 import os
 
@@ -14,26 +15,27 @@ from PIL import Image
 from disprcnn.modeling.models.yolact.layers import Detect
 from disprcnn.modeling.models.yolact.layers.box_utils import decode
 from disprcnn.utils.timer import EvalTime
-from disprcnn.utils.trt_utils import bind_array_to_input, bind_array_to_output
+from disprcnn.utils.trt_utils import bind_array_to_input, bind_array_to_output, load_engine
 
 TRT_LOGGER = trt.Logger()
 
+
 # Filenames of TensorRT plan file and input/output images.
-engine_file = "tmp/yolact-100.engine"
+# engine_file = "tmp/yolact-100.engine"
 
 
-def load_engine(engine_file_path):
-    assert os.path.exists(engine_file_path)
-    print("Reading engine from file {}".format(engine_file_path))
-    with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
-        return runtime.deserialize_cuda_engine(f.read())
+# def load_engine(engine_file_path):
+#     assert os.path.exists(engine_file_path)
+#     print("Reading engine from file {}".format(engine_file_path))
+#     with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
+#         return runtime.deserialize_cuda_engine(f.read())
 
 
 def infer(engine, detector, input_file1, input_file2):
     img1 = preprocess(input_file1)
     img2 = preprocess(input_file2)
     input_image = np.stack([img1, img2])
-    # evaltime = EvalTime()
+    evaltime = EvalTime()
 
     with engine.create_execution_context() as context:
         bindings = []
@@ -60,23 +62,15 @@ def infer(engine, detector, input_file1, input_file2):
         # Transfer input data to the GPU.
         cuda.memcpy_htod_async(input_memory, input_buffer, stream)
         # Run inference
-        # evaltime('')
+        evaltime('')
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-        # evaltime('output')
+        evaltime('output')
         # Transfer prediction output from the GPU.
         for k in output_buffers.keys():
             cuda.memcpy_dtoh_async(output_buffers[k], output_memories[k], stream)
         # Synchronize the stream
         stream.synchronize()
 
-    # unified_out = output_buffer.reshape(2, 11481, -1)
-    # loc = unified_out[:, :, :4]
-    # conf = unified_out[:, :, 4:4 + 2]
-    # mask = unified_out[:, :, 4 + 2:4 + 2 + 32]
-    # prior = unified_out[:, :, 4 + 2 + 32:4 + 2 + 32 + 4][0]
-    # proto = unified_out[:, :11400, 4 + 2 + 32 + 4:4 + 2 + 32 + 4 + 32].reshape(2, 76, 150, 32)
-    # feat_out = unified_out[:, :9728, 4 + 2 + 32 + 4 + 32:].reshape(2, 256, 38, 75)
-    #
     # pred_outs = {'loc': torch.from_numpy(loc).cuda(),
     #              'conf': torch.from_numpy(conf).cuda(),
     #              'mask': torch.from_numpy(mask).cuda(),
@@ -121,9 +115,10 @@ def main():
     detector = Detect(yolact_cfg, yolact_cfg.num_classes, bkg_label=0, top_k=yolact_cfg.nms_top_k,
                       conf_thresh=yolact_cfg.nms_conf_thresh, nms_thresh=yolact_cfg.nms_thresh)
 
+    engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "yolact.engine")
     with load_engine(engine_file) as engine:
-        # for _ in range(10000):
-        infer(engine, detector, input_file1, input_file2)
+        for _ in range(10000):
+            infer(engine, detector, input_file1, input_file2)
 
 
 if __name__ == '__main__':

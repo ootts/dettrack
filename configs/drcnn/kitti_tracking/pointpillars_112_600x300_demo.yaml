@@ -30,6 +30,10 @@ model:
   pointpillars:
     num_point_features: 4
     pretrained_model: "models/pointpillars/disprcnn_112/train/model_epoch_000040.pth"
+trt:
+  onnx_path: "tmp"
+  convert_to_trt:
+    output_path: "tmp"
 datasets:
   train: ("kittitrackingstereo_demo",)
   test: "kittitrackingstereo_demo"

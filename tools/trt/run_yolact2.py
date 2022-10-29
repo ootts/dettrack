@@ -1,3 +1,7 @@
+import pdb
+import time
+
+import torch
 import os.path as osp
 import cv2
 import numpy as np
@@ -23,8 +27,8 @@ class Inference:
         # prepare buffer
         host_inputs = []
         cuda_inputs = []
-        host_outputs = []
-        cuda_outputs = []
+        host_outputs = {}
+        cuda_outputs = {}
         bindings = []
 
         for binding in engine:
@@ -37,8 +41,8 @@ class Inference:
                 host_inputs.append(host_mem)
                 cuda_inputs.append(cuda_mem)
             else:
-                host_outputs.append(host_mem)
-                cuda_outputs.append(cuda_mem)
+                host_outputs[binding] = host_mem
+                cuda_outputs[binding] = cuda_mem
         # store
         self.stream = stream
         self.context = context
@@ -72,71 +76,13 @@ class Inference:
 
         cuda.memcpy_htod_async(cuda_inputs[0], host_inputs[0], stream)
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-        for ho, co in zip(host_outputs, cuda_outputs):
-            cuda.memcpy_dtoh_async(ho, co, stream)
-
+        for k in host_outputs.keys():
+            cuda.memcpy_dtoh_async(host_outputs[k], cuda_outputs[k], stream)
+        stream.synchronize()
         self.ctx.pop()
 
     def destory(self):
         self.ctx.pop()
-
-
-#
-#
-# def infer(engine, detector, input_file1, input_file2):
-#     img1 = preprocess(input_file1)
-#     img2 = preprocess(input_file2)
-#     input_image = np.stack([img1, img2])
-#     evaltime = EvalTime()
-#
-#     with engine.create_execution_context() as context:
-#         # device = cuda.Device(0)
-#         # context = device.make_context()
-#         # ctx.push()
-#         bindings = []
-#         output_buffers = {}
-#         output_memories = {}
-#         for binding in engine:
-#             binding_idx = engine.get_binding_index(binding)
-#             size = trt.volume(context.get_binding_shape(binding_idx))
-#             dtype = trt.nptype(engine.get_binding_dtype(binding))
-#             if engine.binding_is_input(binding):
-#                 # input_buffer = np.ascontiguousarray(input_image)
-#                 # input_memory = cuda.mem_alloc(input_image.nbytes)
-#                 input_buffer, input_memory = bind_array_to_input(input_image, bindings)
-#                 # bindings.append(int(input_memory))
-#             else:
-#                 # output_buffer = cuda.pagelocked_empty(size, dtype)
-#                 # output_memory = cuda.mem_alloc(output_buffer.nbytes)
-#                 # bindings.append(int(output_memory))
-#                 output_buffer, output_memory = bind_array_to_output(size, dtype, bindings)
-#                 output_buffers[binding] = output_buffer
-#                 output_memories[binding] = output_memory
-#
-#         stream = cuda.Stream()
-#         # Transfer input data to the GPU.
-#         cuda.memcpy_htod_async(input_memory, input_buffer, stream)
-#         # Run inference
-#         evaltime('')
-#         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-#         evaltime('output')
-#         # Transfer prediction output from the GPU.
-#         for k in output_buffers.keys():
-#             cuda.memcpy_dtoh_async(output_buffers[k], output_memories[k], stream)
-#         # Synchronize the stream
-#         stream.synchronize()
-# ctx.pop()
-# del context
-# pred_outs = {'loc': torch.from_numpy(loc).cuda(),
-#              'conf': torch.from_numpy(conf).cuda(),
-#              'mask': torch.from_numpy(mask).cuda(),
-#              'priors': torch.from_numpy(prior).cuda(),
-#              'proto': torch.from_numpy(proto).cuda()}
-# dets_2d = detector(pred_outs)
-# ref = torch.load('tmp/yolact_out_ref.pth')
-# print()
-# evaltime('decode')
-# print()
 
 
 def preprocess(input_file):
@@ -178,11 +124,21 @@ def main():
 
     inferencer.infer(detector, input_file1, input_file2)
     inferencer.destory()
-    # with load_engine(engine_file) as engine:
-    #     for _ in range(10000):
-    # ctx.push()
-    # infer(engine, detector, input_file1, input_file2)
-    # ctx.pop()
+
+    d, feat_outr = torch.load('tmp/yolact_out_ref.pth', 'cpu')
+    locr, confr, maskr, priorsr, protor = d['loc'], d['conf'], d['mask'], d['priors'], d['proto']
+    loc = torch.from_numpy(inferencer.host_outputs['loc'].reshape(2, 11481, 4))
+    conf = torch.from_numpy(inferencer.host_outputs['conf'].reshape(2, 11481, 2))
+    mask = torch.from_numpy(inferencer.host_outputs['mask'].reshape(2, 11481, 32))
+    priors = torch.from_numpy(inferencer.host_outputs['priors'].reshape(11481, 4))
+    proto = torch.from_numpy(inferencer.host_outputs['proto'].reshape(2, 76, 150, 32))
+    feat_out = torch.from_numpy(inferencer.host_outputs['feat_out'].reshape(2, 256, 38, 75))
+    print((loc[0] - locr).abs().max())
+    print((conf[0] - confr).abs().max())
+    print((mask[0] - maskr).abs().max())
+    print((priors - priorsr).abs().max())
+    print((proto[0] - protor).abs().max())
+    print((feat_out[0] - feat_outr).abs().max())
 
 
 if __name__ == '__main__':

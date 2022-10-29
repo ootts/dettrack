@@ -77,8 +77,7 @@ class TotalInference:
         left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = idispnet_prep
         evaltime('idispnet prep')
         if len(left_roi_images) > 0:
-            self.idispnet_inf.infer(left_roi_images, right_roi_images)
-            disp_output = self.idispnet_inf.cuda_outputs['output']
+            disp_output = self.idispnet_inf.predict_idisp(left_roi_images, right_roi_images)
         else:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)

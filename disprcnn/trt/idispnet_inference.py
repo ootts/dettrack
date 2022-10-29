@@ -5,8 +5,10 @@ import pycuda.driver as cuda
 import tensorrt as trt
 from torch.fx.experimental.fx2trt import torch_dtype_from_trt
 
+from disprcnn.modeling.models.psmnet.submodule import disparityregression
 from disprcnn.utils.timer import EvalTime
 from disprcnn.utils.trt_utils import load_engine, torch_device_from_trt
+import torch.nn.functional as F
 
 
 class IDispnetInference:
@@ -22,18 +24,18 @@ class IDispnetInference:
         cuda_outputs = {}
         bindings = []
 
-        for binding in engine:
-            binding_idx = engine.get_binding_index(binding)
-            dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
-            shape = tuple(engine.get_binding_shape(binding_idx))
-            device = torch_device_from_trt(engine.get_location(binding_idx))
-            cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
-
-            bindings.append(int(cuda_mem.data_ptr()))
-            if engine.binding_is_input(binding):
-                cuda_inputs[binding] = cuda_mem
-            else:
-                cuda_outputs[binding] = cuda_mem
+        # for binding in engine:
+        #     binding_idx = engine.get_binding_index(binding)
+        #     dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
+        #     shape = tuple(engine.get_binding_shape(binding_idx))
+        #     device = torch_device_from_trt(engine.get_location(binding_idx))
+        #     cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
+        #
+        #     bindings.append(int(cuda_mem.data_ptr()))
+        #     if engine.binding_is_input(binding):
+        #         cuda_inputs[binding] = cuda_mem
+        #     else:
+        #         cuda_outputs[binding] = cuda_mem
         # store
         self.stream = stream
         self.context = context
@@ -44,16 +46,34 @@ class IDispnetInference:
         self.bindings = bindings
 
     def infer(self, left_images, right_images):
+        self.context.set_binding_shape(self.engine.get_binding_index("left_input"),
+                                       (left_images.shape[0], 3, 112, 112))
+        self.context.set_binding_shape(self.engine.get_binding_index("right_input"),
+                                       (right_images.shape[0], 3, 112, 112))
+        self.bindings = []
+        for binding in self.engine:
+            binding_idx = self.engine.get_binding_index(binding)
+            dtype = torch_dtype_from_trt(self.engine.get_binding_dtype(binding_idx))
+            shape = tuple(self.context.get_binding_shape(binding_idx))
+            device = torch_device_from_trt(self.engine.get_location(binding_idx))
+            cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
+
+            self.bindings.append(int(cuda_mem.data_ptr()))
+            if self.engine.binding_is_input(binding):
+                self.cuda_inputs[binding] = cuda_mem
+            else:
+                self.cuda_outputs[binding] = cuda_mem
+
         evaltime = EvalTime()
         self.ctx.push()
 
         evaltime("")
-        N = left_images.shape[0]
-        left_pad = torch.zeros([20 - N, 3, 112, 112]).float().to(left_images.device)
-        left_images = torch.cat([left_images, left_pad], dim=0)
-        right_pad = torch.zeros([20 - N, 3, 112, 112]).float().to(left_images.device)
-        right_images = torch.cat([right_images, right_pad], dim=0)
-        evaltime("pad")
+        # N = left_images.shape[0]
+        # left_pad = torch.zeros([20 - N, 3, 112, 112]).float().to(left_images.device)
+        # left_images = torch.cat([left_images, left_pad], dim=0)
+        # right_pad = torch.zeros([20 - N, 3, 112, 112]).float().to(left_images.device)
+        # right_images = torch.cat([right_images, right_pad], dim=0)
+        # evaltime("pad")
 
         # restore
         stream = self.stream
@@ -61,7 +81,7 @@ class IDispnetInference:
         engine = self.engine
 
         cuda_inputs = self.cuda_inputs
-        cuda_outputs = self.cuda_outputs
+        # cuda_outputs = self.cuda_outputs
         bindings = self.bindings
 
         # img1 = self.preprocess(input_file1)
@@ -80,3 +100,17 @@ class IDispnetInference:
     def destory(self):
         self.ctx.pop()
         del self.context
+
+    def predict_idisp(self, left, right):
+        evaltime = EvalTime()
+        evaltime('')
+        self.infer(left, right)
+        evaltime('infer')
+
+        cost3 = self.cuda_outputs['output'].clone()
+        cost3 = F.interpolate(cost3, [48, 112, 112], mode='trilinear', align_corners=True)
+        cost3 = torch.squeeze(cost3, 1)
+        pred3 = F.softmax(cost3, dim=1)
+        p3 = disparityregression(pred3, 24, -24)
+        evaltime('disp reg')
+        return p3

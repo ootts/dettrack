@@ -225,21 +225,34 @@ class PSMNet(nn.Module):
         _, C, Hp, Wp = refimg_fea.shape
         C, Hp, Wp = 32, 28, 28
         costs = []
-        for i in range(-6, 6):
-            if i < 0:
-                tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
-                                  torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
-                tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
-                                  torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
-                costs.append(torch.cat([tmp1, tmp2], dim=1))
-            elif i > 0:
-                tmp1 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
-                                  refimg_fea[:, :, :, i:]], dim=-1)
-                tmp2 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
-                                  targetimg_fea[:, :, :, :Wp - i]], dim=-1)
-                costs.append(torch.cat([tmp1, tmp2], dim=1))
-            else:
-                costs.append(torch.cat([refimg_fea, targetimg_fea], dim=1))
+        for i in range(-6, 0):
+            tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
+                              torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
+            tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
+                              torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
+            costs.append(torch.cat([tmp1, tmp2], dim=1))
+        costs.append(torch.cat([refimg_fea, targetimg_fea], dim=1))
+        for i in range(1, 6):
+            tmp1 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
+                              refimg_fea[:, :, :, i:]], dim=-1)
+            tmp2 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
+                              targetimg_fea[:, :, :, :Wp - i]], dim=-1)
+            costs.append(torch.cat([tmp1, tmp2], dim=1))
+        # for i in range(-6, 6):
+        #     if i < 0:
+        #         tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
+        #                           torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
+        #         tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
+        #                           torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
+        #         costs.append(torch.cat([tmp1, tmp2], dim=1))
+        #     elif i > 0:
+        #         tmp1 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
+        #                           refimg_fea[:, :, :, i:]], dim=-1)
+        #         tmp2 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
+        #                           targetimg_fea[:, :, :, :Wp - i]], dim=-1)
+        #         costs.append(torch.cat([tmp1, tmp2], dim=1))
+        #     else:
+        #         costs.append(torch.cat([refimg_fea, targetimg_fea], dim=1))
         cost = torch.stack(costs, dim=2)
         cost = cost.contiguous()
         # return cost
@@ -258,8 +271,76 @@ class PSMNet(nn.Module):
         cost1 = self.classif1(out1)
         cost2 = self.classif2(out2) + cost1
         cost3 = self.classif3(out3) + cost2
+        return cost3
+        # assert not self.training
+        # cost3 = F.interpolate(cost3, [48, H, W], mode='trilinear', align_corners=True)
+        # cost3 = torch.squeeze(cost3, 1)
+        # pred3 = F.softmax(cost3, dim=1)
+        # p3 = disparityregression(pred3, self.maxdisp, self.mindisp)
+        # return p3
+
+    def forward_onnx_part1(self, left, right):
+        bsz, _, H, W = left.shape
+        refimg_fea = self.feature_extraction(left)
+        targetimg_fea = self.feature_extraction(right)
+        return refimg_fea, targetimg_fea
+
+    def forward_onnx_part2_neg(self, refimg_fea, targetimg_fea):
+        bsz, C, Hp, Wp = refimg_fea.shape
+        C, Hp, Wp = 32, 28, 28
+        costs = []
+        for i in range(-6, 0):
+            tmp1 = torch.cat([refimg_fea[:, :, :, :Wp + i],
+                              torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
+            tmp2 = torch.cat([targetimg_fea[:, :, :, -i:],
+                              torch.zeros([bsz, 32, 28, -i]).cuda().float()], dim=-1)
+            costs.append(torch.cat([tmp1, tmp2], dim=1))
+        cost = torch.stack(costs, dim=2)
+        return cost
+
+    def forward_onnx_part2_pos(self, refimg_fea, targetimg_fea):
+        bsz, C, Hp, Wp = refimg_fea.shape
+        C, Hp, Wp = 32, 28, 28
+        costs = []
+        for i in range(1, 6):
+            tmp1 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
+                              refimg_fea[:, :, :, i:]], dim=-1)
+            tmp2 = torch.cat([torch.zeros([bsz, 32, 28, i]).cuda().float(),
+                              targetimg_fea[:, :, :, :Wp - i]], dim=-1)
+            costs.append(torch.cat([tmp1, tmp2], dim=1))
+        cost = torch.stack(costs, dim=2)
+        return cost
+
+    def forward_onnx_part3(self, refimg_fea, targetimg_fea, neg_cost, pos_cost):
+        """
+
+        :param refimg_fea: bsz,32, 28, 28
+        :param targetimg_fea:
+        :param neg_cost: bszx64x6x28x28
+        :param pos_cost:bszx64x5x28x28
+        :return:
+        """
+        zero_cost = torch.cat([refimg_fea, targetimg_fea], dim=1).unsqueeze(dim=2)
+        cost = torch.cat([neg_cost, zero_cost, pos_cost], dim=2)
+        cost = cost.contiguous()
+        cost0 = self.dres0(cost)
+        cost0 = self.dres1(cost0) + cost0
+
+        out1, pre1, post1 = self.dres2(cost0, None, None)
+        out1 = out1 + cost0
+
+        out2, pre2, post2 = self.dres3(out1, pre1, post1)
+        out2 = out2 + cost0
+
+        out3, pre3, post3 = self.dres4(out2, pre1, post2)
+        out3 = out3 + cost0
+
+        cost1 = self.classif1(out1)
+        cost2 = self.classif2(out2) + cost1
+        cost3 = self.classif3(out3) + cost2
+        return cost3
         assert not self.training
-        cost3 = F.interpolate(cost3, [48, H, W], mode='trilinear', align_corners=True)
+        cost3 = F.interpolate(cost3, [48, 112, 112], mode='trilinear', align_corners=True)
         cost3 = torch.squeeze(cost3, 1)
         pred3 = F.softmax(cost3, dim=1)
         p3 = disparityregression(pred3, self.maxdisp, self.mindisp)

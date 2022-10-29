@@ -11,9 +11,9 @@ import torch
 import torch.nn as nn
 
 
-class IDispnetOnnx(nn.Module):
+class IDispnetPart2PosOnnx(nn.Module):
     def __init__(self, model):
-        super(IDispnetOnnx, self).__init__()
+        super(IDispnetPart2PosOnnx, self).__init__()
         self.model = model.idispnet
 
     def forward(self, left, right):
@@ -21,7 +21,7 @@ class IDispnetOnnx(nn.Module):
         :param inputs: 2x3x112x112
         :return:
         """
-        return self.model.forward_onnx(left, right)
+        return self.model.forward_onnx_part2_pos(left, right)
 
 
 def main():
@@ -46,38 +46,38 @@ def main():
     data0 = valid_ds[0]
     calib = data0['targets']['left'].extra_fields['calib']
     model = trainer.model
-    model = IDispnetOnnx(model)
+    model = IDispnetPart2PosOnnx(model)
     model.eval()
     model.cuda()
 
-    left_tensor = torch.rand(20, 3, 112, 112).float().cuda()
-    right_tensor = torch.rand(20, 3, 112, 112).float().cuda()
+    left_tensor = torch.rand(20, 32, 28, 28).float().cuda()
+    right_tensor = torch.rand(20, 32, 28, 28).float().cuda()
 
     # Export torch model to ONNX
-    output_onnx = osp.join(cfg.trt.onnx_path, "idispnet.onnx")
+    output_onnx = osp.join(cfg.trt.onnx_path, "idispnet_part2_pos.onnx")
     print("Exporting ONNX model {}".format(output_onnx))
     torch.onnx.export(model, (left_tensor, right_tensor), output_onnx,
                       opset_version=12,
                       do_constant_folding=True,
-                      input_names=["left_input", "right_input"],
-                      output_names=["output"],
-                      dynamic_axes={"left_input": {0: "batch"},
-                                    "right_input": {0: "batch"},
-                                    "output": {0: "batch"}
+                      input_names=["refimg_fea", "targetimg_fea"],
+                      output_names=["cost"],
+                      dynamic_axes={"refimg_fea": {0: "batch"},
+                                    "targetimg_fea": {0: "batch"},
+                                    "refcostimg_fea": {0: "batch"},
                                     },
                       verbose=False)
 
-    # simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
-    # os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
+    simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
+    os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
 
     print('to engine')
-    engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine")
+    engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet_part2_pos.engine")
     cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={output_onnx} --workspace=40960 --saveEngine={engine_path}  --tacticSources=-cublasLt,+cublas"
     if cfg.trt.convert_to_trt.fp16:
         cmd = cmd + " --fp16"
-    cmd = cmd + " --minShapes=left_input:1x3x112x112,right_input:1x3x112x112" \
-                " --optShapes=left_input:4x3x112x112,right_input:4x3x112x112" \
-                " --maxShapes=left_input:20x3x112x112,right_input:20x3x112x112"
+    cmd = cmd + " --minShapes=refimg_fea:1x32x28x28,targetimg_fea:1x32x28x28" \
+                " --optShapes=refimg_fea:4x32x28x28,targetimg_fea:4x32x28x28" \
+                " --maxShapes=refimg_fea:20x32x28x28,targetimg_fea:20x32x28x28"
     os.system(cmd)
 
 

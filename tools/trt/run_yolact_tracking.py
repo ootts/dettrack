@@ -59,7 +59,6 @@ class Inference:
             binding_idx = self.engine.get_binding_index(binding)
             size = trt.volume(self.context.get_binding_shape(binding_idx))
             dtype = trt.nptype(self.engine.get_binding_dtype(binding))
-            # size = trt.volume(self.engine.get_binding_shape(binding))
             host_mem = cuda.pagelocked_empty(size, dtype)
             cuda_mem = cuda.mem_alloc(host_mem.nbytes)
             self.bindings.append(int(cuda_mem))

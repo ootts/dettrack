@@ -1,6 +1,3 @@
-import pdb
-import time
-
 import torch
 import os.path as osp
 import cv2
@@ -34,9 +31,6 @@ class Inference:
 
         for binding in engine:
             binding_idx = engine.get_binding_index(binding)
-            # size = trt.volume(engine.get_binding_shape(binding))
-            # host_mem = cuda.pagelocked_empty(size, np.float32)
-            # cuda_mem = cuda.mem_alloc(host_mem.nbytes)
             dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
             shape = tuple(engine.get_binding_shape(binding_idx))
             device = torch_device_from_trt(engine.get_location(binding_idx))

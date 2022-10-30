@@ -4,7 +4,6 @@ import time
 import colorama
 import torch
 
-
 # from dl_ext import AverageMeter
 
 
@@ -55,6 +54,7 @@ import torch
 #     def avg_time_str(self):
 #         time_str = str(datetime.timedelta(seconds=self.average_time))
 #         return time_str
+from disprcnn.utils.averagemeter import AverageMeter
 
 
 def get_time_str(time_diff):
@@ -67,7 +67,8 @@ class EvalTime(object):
         self.last_time = None
         self.disable = disable
         self.do_print = do_print
-        # self.infos = {}
+        # self.avgs = {}
+        self.infos = {}
 
     def __call__(self, info):
         if not self.disable:
@@ -75,19 +76,20 @@ class EvalTime(object):
             t = time.perf_counter()
             if self.last_time is None:
                 self.last_time = t
-                if self.do_print:
+                if self.do_print and info != "":
                     print("{}info : {}{} : %f".format(colorama.Fore.CYAN, info, colorama.Style.RESET_ALL) % t)
             else:
                 interval = (t - self.last_time) * 1000
-                # if info not in self.infos:
-                #     self.infos[info] = AverageMeter()
-                # self.infos[info].update(interval)
-                if self.do_print:
-                    print(
-                        "{}info : {}{}".format(colorama.Fore.CYAN, info,
-                                               colorama.Style.RESET_ALL) + ' : % f, {}interval{} : % f'.format(
-                            colorama.Fore.RED,
-                            colorama.Style.RESET_ALL) % (t, interval))
+                if info not in self.infos:
+                    self.infos[info] = AverageMeter(ignore_first=20)
+                self.infos[info].update(interval)
+                if self.do_print and info != "":
+                    tmp1 = "{}info : {}{}".format(colorama.Fore.CYAN, info, colorama.Style.RESET_ALL)
+                    tmp2 = ' : %f, {}interval{} : %f'.format(colorama.Fore.RED, colorama.Style.RESET_ALL) % (
+                        t, interval)
+                    tmp3 = ' : %f, {}avg{} : %f'.format(colorama.Fore.BLUE, colorama.Style.RESET_ALL) % (
+                        t, self.infos[info].avg)
+                    print(tmp1 + tmp2 + tmp3)
 
                 self.last_time = t
                 return interval

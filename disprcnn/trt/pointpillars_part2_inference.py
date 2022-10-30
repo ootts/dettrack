@@ -51,9 +51,11 @@ class PointPillarsPart2Inference:
 
         self.box_coder = GroundBox3dCoderTorch()
 
-    def infer(self, spatial_features):
-        evaltime = EvalTime()
+        self.evaltime = EvalTime()
 
+    def infer(self, spatial_features):
+        # evaltime = EvalTime()
+        # evaltime("")
         cuda_inputs = {}
         cuda_outputs = {}
         bindings = []
@@ -73,7 +75,6 @@ class PointPillarsPart2Inference:
 
         self.ctx.push()
 
-        evaltime("")
         # restore
         stream = self.stream
         context = self.context
@@ -83,16 +84,20 @@ class PointPillarsPart2Inference:
         # bindings = self.bindings
 
         cuda_inputs['input'].copy_(spatial_features)
-        evaltime("prep done")
+        # evaltime("pointpillars part2: prep buffer")
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-        evaltime("pointpillars part2 infer")
+        # evaltime("pointpillars part2: execute")
         stream.synchronize()
         self.ctx.pop()
         return cuda_outputs
 
     def detect_3d_bbox(self, spatial_features, anchors, rect, Trv2c, P2, anchors_mask, width, height):
+
+        self.evaltime("")
         cuda_outputs = self.infer(spatial_features)
+        self.evaltime("pointpillars part2: infer")
         pred_dict = self.predict(cuda_outputs, anchors, rect, Trv2c, P2, anchors_mask)
+        self.evaltime("pointpillars part2: predict")
         score_thresh = 0.05
         score = pred_dict[0]['scores']
         keep = score > score_thresh
@@ -114,6 +119,7 @@ class PointPillarsPart2Inference:
         result.add_field("scores", score)
         # result.add_field("imgid", imgid)
         output = {'left': result, 'right': result}
+        self.evaltime("pointpillars part2: ready to return")
         return output
 
     def predict(self, cuda_outputs, anchors, rect, Trv2c, P2, anchors_mask):

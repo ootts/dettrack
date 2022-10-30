@@ -46,6 +46,8 @@ class PointPillarsPart1Inference:
         # self.bindings = bindings
 
     def infer(self, voxels, num_points, coordinates):
+        # evaltime = EvalTime()
+        # evaltime("")
         cuda_inputs = {}
         cuda_outputs = {}
         bindings = []
@@ -65,11 +67,8 @@ class PointPillarsPart1Inference:
                 cuda_inputs[binding] = cuda_mem
             else:
                 cuda_outputs[binding] = cuda_mem
-
-        evaltime = EvalTime()
         self.ctx.push()
 
-        evaltime("")
         # restore
         stream = self.stream
         context = self.context
@@ -82,9 +81,9 @@ class PointPillarsPart1Inference:
         cuda_inputs['voxels'].copy_(voxels)
         cuda_inputs['num_points'].copy_(num_points)
         cuda_inputs['coordinates'].copy_(coordinates)
-        evaltime("prep done")
+        # evaltime("pointpillars: prepare buffers")
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-        evaltime("pointpillars part1 infer")
+        # evaltime("pointpillars:part1 execute_async_v2")
         stream.synchronize()
         self.ctx.pop()
 

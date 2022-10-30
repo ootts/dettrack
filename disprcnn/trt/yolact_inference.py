@@ -49,9 +49,10 @@ class YolactInference:
         # self.bindings = bindings
 
         self.detector = detector
+        self.evaltime = EvalTime()
 
     def infer(self, input_file1, input_file2):
-        evaltime = EvalTime()
+        self.evaltime('')
         cuda_inputs = []
         cuda_outputs = {}
         bindings = []
@@ -70,7 +71,7 @@ class YolactInference:
                 cuda_outputs[binding] = cuda_mem
 
         self.ctx.push()
-        evaltime('prepare buffers')
+        # evaltime('yolact: prepare buffers')
         # restore
         stream = self.stream
         context = self.context
@@ -87,9 +88,9 @@ class YolactInference:
 
         input_image = torch.stack([img1, img2]).cuda()
         cuda_inputs[0].copy_(input_image)
-        evaltime('preprocess')
+        self.evaltime('yolact: preprocess')
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-        evaltime('yolact infer')
+        self.evaltime('yolact:execute')
         stream.synchronize()
         self.ctx.pop()
 
@@ -149,14 +150,14 @@ class YolactInference:
         return [boxlist]
 
     def detect(self, input_file1, input_file2):
-        evaltime = EvalTime()
+
         cuda_outputs = self.infer(input_file1, input_file2)
-        evaltime('')
+        self.evaltime('')
         rets, feat_out = self.postprocess(cuda_outputs)
-        evaltime('postprocess')
+        self.evaltime('yolact:postprocess')
         left_rets, right_rets = [rets[0]], [rets[1]]
         left_feat, right_feat = feat_out[0:1], feat_out[1:]
         left_preds = self.decode_preds(left_rets, 300, 600, add_mask=True)
         right_preds = self.decode_preds(right_rets, 300, 600, add_mask=False)
-        evaltime('decode')
+        self.evaltime('yolact:decode')
         return left_preds, right_preds, left_feat, right_feat

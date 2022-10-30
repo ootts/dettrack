@@ -44,13 +44,14 @@ class IDispnetInference:
         # self.cuda_inputs = cuda_inputs
         # self.cuda_outputs = cuda_outputs
         # self.bindings = bindings
+        self.evaltime = EvalTime()
 
     def infer(self, left_images, right_images):
-        evaltime = EvalTime('')
+        # evaltime = EvalTime('')
+        # evaltime('')
         cuda_inputs = {}
         cuda_outputs = {}
         bindings = []
-        evaltime('idispnet infer begin')
         self.context.set_binding_shape(self.engine.get_binding_index("left_input"),
                                        (left_images.shape[0], 3, 112, 112))
         self.context.set_binding_shape(self.engine.get_binding_index("right_input"),
@@ -69,9 +70,9 @@ class IDispnetInference:
             else:
                 cuda_outputs[binding] = cuda_mem
 
-        evaltime('prep done')
+        # evaltime('prep done')
         self.ctx.push()
-        evaltime("push ctx")
+        # evaltime("push ctx")
         # restore
         stream = self.stream
         context = self.context
@@ -83,9 +84,9 @@ class IDispnetInference:
 
         cuda_inputs['left_input'].copy_(left_images)
         cuda_inputs['right_input'].copy_(right_images)
-        evaltime("prep done")
+        # evaltime("idispnet:prep done")
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-        evaltime("idispnet infer")
+        # evaltime("idispnet:execute_async_v2")
         stream.synchronize()
         self.ctx.pop()
         return cuda_outputs
@@ -95,15 +96,15 @@ class IDispnetInference:
         # del self.context
 
     def predict_idisp(self, left, right):
-        evaltime = EvalTime()
-        evaltime('')
+
+        self.evaltime('')
         cuda_outputs = self.infer(left, right)
-        evaltime('infer')
+        self.evaltime('idispnet: infer')
 
         cost3 = cuda_outputs['output']
         cost3 = F.interpolate(cost3, [48, 112, 112], mode='trilinear', align_corners=True)
         cost3 = torch.squeeze(cost3, 1)
         pred3 = F.softmax(cost3, dim=1)
         p3 = disparityregression(pred3, 24, -24)
-        evaltime('disp reg')
+        self.evaltime('idispnet: disp reg')
         return p3

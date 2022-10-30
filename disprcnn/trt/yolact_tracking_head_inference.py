@@ -52,6 +52,7 @@ class YolactTrackingHeadInference:
         self.roi_align = RoIAlign((7, 7), 69.0 / 550, 0)
         self.memory = torch.empty([0, 256, 7, 7], dtype=torch.float, device='cuda')  # todo: put in cfg
         self.boxmemory = None
+        self.evaltime = EvalTime()
 
     def infer(self, x, ref_x):
 
@@ -96,19 +97,19 @@ class YolactTrackingHeadInference:
         return roi_features
 
     def track(self, left_preds, left_feat, right_preds, right_feat, width, height):
-        evaltime = EvalTime()
-        evaltime("")
+
+        self.evaltime("")
         confidence = left_preds[0].get_field('scores')
         roi_features = self.extract_roi_features(left_preds, left_feat)
         ref_x = self.memory
         x = roi_features
-        evaltime("extract_roi_features")
+        self.evaltime("track:extract_roi_features")
         if len(self.memory) > 0 and x.numel() > 0:
             self.infer(x, ref_x)
             match_score = self.cuda_outputs['output']
         else:
             match_score = torch.empty([len(left_preds[0]), len(self.memory)], dtype=torch.float, device='cuda')
-        evaltime("match score")
+        self.evaltime("track:match score")
         ##############  ↓ Step : match  ↓  ##############
         if match_score.numel() > 0:
             match_score = F.softmax(match_score, dim=1)
@@ -174,7 +175,7 @@ class YolactTrackingHeadInference:
         left_pred.add_field('trackids', cur_trackids)
 
         right_pred = right_preds[0].resize([width, height])
-        evaltime("match post process")
+        self.evaltime("track:post process")
         return left_pred, right_pred
 
     def calcIOUscore(self, preds):

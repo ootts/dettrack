@@ -44,13 +44,14 @@ class TotalInference:
         args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
         cfg = setup(args)
         self.cfg = cfg
-        self.dbg = True
+        self.dbg = False
 
         valid_ds = make_data_loader(cfg).dataset
 
         data0 = valid_ds[0]
         calib = data0['targets']['left'].extra_fields['calib']
         self.calib = calib
+        self.calib2 = Calib(calib, (calib.width, calib.height), 'cuda')
 
         yolact_cfg = cfg.model.yolact
         detector = Detect(yolact_cfg, yolact_cfg.num_classes, bkg_label=0, top_k=yolact_cfg.nms_top_k,
@@ -93,9 +94,10 @@ class TotalInference:
         }
         self.middle_feature_extractor = PointPillarsScatter(output_shape=[1, 1, 496, 432, 64],
                                                             num_input_features=64)
+        self.evaltime = EvalTime()
 
     def infer(self, input_file1, input_file2):
-        evaltime = EvalTime()
+
         left = cv2.cvtColor(cv2.imread(input_file1), cv2.COLOR_BGR2GRAY)
         left = np.repeat(left[:, :, None], 3, axis=2)
         right = cv2.cvtColor(cv2.imread(input_file2), cv2.COLOR_BGR2GRAY)
@@ -103,35 +105,42 @@ class TotalInference:
         height, width, _ = left.shape
         original_left_img = torch.from_numpy(left).cuda()[None]
         original_right_img = torch.from_numpy(right).cuda()[None]
-        evaltime('begin')
+        self.evaltime('begin')
         left_preds, right_preds, left_feat, right_feat = self.yolact_inf.detect(input_file1, input_file2)
-        evaltime('2d detection')
+        # evaltime('yolact:detect')
 
         left_pred, right_pred = self.yolact_tracking_head_inf.track(
             left_preds, left_feat, right_preds, right_feat, width, height)
-        evaltime('track')
+        # evaltime('track')
+        self.evaltime("")
         left_result, right_result = self.match_lp_rp(left_pred, right_pred,
                                                      original_left_img[0],
                                                      original_right_img[0])
-        evaltime('match lr')
+        self.evaltime('match lr')
         idispnet_prep = self.prepare_idispnet_input(original_left_img, original_right_img,
                                                     left_result, right_result)
         left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = idispnet_prep
-        evaltime('idispnet prep')
+        self.evaltime('idispnet:prep input')
         if len(left_roi_images) > 0:
             disp_output = self.idispnet_inf.predict_idisp(left_roi_images, right_roi_images)
         else:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)
-        evaltime('idispnet forward')
+        # evaltime('idispnet:forward')
+        self.evaltime("")
         pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
+        self.evaltime('pointpillars:prepare input')
         cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
+        self.evaltime('pointpillars:infer')
         voxel_features = cuda_outputs['output']
         spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
                                                          pp_input["anchors"].shape[0])
+        self.evaltime('pointpillars:middle_feature_extractor')
         pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
                                                                pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
                                                                pp_input['anchors_mask'], width, height)
+        # evaltime('pointpillars part2:detect_3d_bbox')
+        self.evaltime("")
         if len(left_result) == 0:
             box3d = Box3DList(torch.empty([0, 7]), "xyzhwl_ry")
             left_result.add_field('box3d', box3d)
@@ -151,13 +160,13 @@ class TotalInference:
             # left_result.PixelWise_map['masks'] = left_result.PixelWise_map['masks'].convert(
             #     self.cfg.mask_mode)
             right_result = right_result[keep]
+        self.evaltime("pipeline: postprocess")
         if self.dbg:
             self.vis_final_result(left_result, right_result, self.calib, original_left_img, original_right_img)
 
     def match_lp_rp(self, lp, rp, img2, img3):
         W, H = lp.size
         lboxes = lp.bbox.round().long().tolist()
-        # llabels = lp.get_field('labels').long().tolist() # onnx fails.
         rboxes = rp.bbox.round().long().tolist()
         ssims = torch.zeros((len(lboxes), len(rboxes)))
         for i in range(len(lboxes)):
@@ -256,30 +265,30 @@ class TotalInference:
         return im
 
     def prepare_pointpillars_input(self, left_result, right_result, width, height):
+        evaltime = self.evaltime
+        evaltime('')
         dmp = DisparityMapProcessor()
         voxel_generator = self.voxel_generator
         disparity_map = dmp(left_result, right_result)
-        calib = self.calib
-        calib = Calib(calib, (calib.width, calib.height), 'cuda')
+        evaltime('dmp')
+        calib = self.calib2
         pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
         keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
                (pts_rect[:, 1] > -3) & (pts_rect[:, 1] < 3) \
                & (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
-        # keep = (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
+        evaltime('to points')
         pts_rect = pts_rect[keep]
         points = calib.rect_to_lidar(pts_rect)
         rect = torch.eye(4).cuda().float()
         rect[:3, :3] = to_tensor(calib.R0, torch.float, 'cuda')
         Trv2c = torch.eye(4).cuda().float()
         Trv2c[:3, :4] = to_tensor(calib.V2C, torch.float, 'cuda')
-        # augmentation
-        # if self.cfg.detector_3d.shuffle_points:
-        #     perm = np.random.permutation(points.shape[0])
-        #     points = points[perm]
         points = torch.cat([points, torch.full_like(points[:, 0:1], 0.5)], dim=1)
         voxel_size = voxel_generator.voxel_size
         pc_range = voxel_generator.point_cloud_range
         grid_size = voxel_generator.grid_size
+        evaltime('points cat')
+
         p = to_array(points)
         voxels, coordinates, num_points = voxel_generator.generate(p,
                                                                    self.cfg.model.drcnn.detector_3d.max_number_of_voxels)
@@ -295,13 +304,11 @@ class TotalInference:
             'Trv2c': Trv2c[None],
             'P2': to_tensor(matrix_3x4_to_4x4(calib.P2), torch.float, 'cuda')[None],
         }
+        evaltime('init example')
         anchor_cache = self.anchor_cache
         anchors = anchor_cache["anchors"]
         anchors_bv = anchor_cache["anchors_bv"]
-        # matched_thresholds = anchor_cache["matched_thresholds"]
-        # unmatched_thresholds = anchor_cache["unmatched_thresholds"]
         example["anchors"] = anchors[None]
-        # anchors_mask = None
         anchor_area_threshold = self.cfg.model.drcnn.detector_3d.anchor_area_threshold
         if anchor_area_threshold >= 0:
             coors = coordinates
@@ -313,10 +320,10 @@ class TotalInference:
             anchors_mask = torch.from_numpy(anchors_area > anchor_area_threshold).cuda()
             example['anchors_mask'] = anchors_mask[None]
         example['coordinates'] = torch.cat([torch.full_like(coordinates[:, 0:1], 0), example['coordinates']], dim=1)
-        # example['image_idx'] = [torch.tensor(left_result.extra_fields['imgid']).cuda()]
         example['calib'] = calib
         example['width'] = width
         example['height'] = height
+        evaltime('return example')
         return example
 
     def vis_final_result(self, left_result, right_result, calib, left_original_images, right_original_images):

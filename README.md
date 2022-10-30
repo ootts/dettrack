@@ -65,4 +65,8 @@ tensorboard --logdir models/drcnn/kitti_tracking/pointpillars_112_demo/evaltime/
 
 ## TensorRT
 
+### Requirements
+
+GPU sm>=70
+
 https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar

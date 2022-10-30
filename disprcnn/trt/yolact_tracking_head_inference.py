@@ -1,7 +1,5 @@
 import math
 
-import numpy as np
-import cv2
 import torch
 import pycuda.driver as cuda
 
@@ -107,7 +105,7 @@ class YolactTrackingHeadInference:
         evaltime("extract_roi_features")
         if len(self.memory) > 0 and x.numel() > 0:
             self.infer(x, ref_x)
-            match_score = self.cuda_outputs['output'].clone()
+            match_score = self.cuda_outputs['output']
         else:
             match_score = torch.empty([len(left_preds[0]), len(self.memory)], dtype=torch.float, device='cuda')
         evaltime("match score")
@@ -189,4 +187,4 @@ class YolactTrackingHeadInference:
     def destory(self):
         self.ctx.pop()
         # self.logger.destroy()
-        del self.context
+        # del self.context

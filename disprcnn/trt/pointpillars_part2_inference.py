@@ -8,6 +8,8 @@ from torch.fx.experimental.fx2trt import torch_dtype_from_trt
 
 from disprcnn.modeling.models.pointpillars.ops import center_to_corner_box2d, corner_to_standup_nd, box_lidar_to_camera, \
     center_to_corner_box3d, project_to_image
+from disprcnn.structures.bounding_box import BoxList
+from disprcnn.structures.bounding_box_3d import Box3DList
 from disprcnn.utils.ppp_utils.box_coders import GroundBox3dCoderTorch
 from disprcnn.utils.timer import EvalTime
 from disprcnn.utils.trt_utils import load_engine, torch_device_from_trt
@@ -22,35 +24,53 @@ class PointPillarsPart2Inference:
         context = engine.create_execution_context()
 
         # prepare buffer
-        cuda_inputs = {}
-        cuda_outputs = {}
-        bindings = []
-
-        for binding in engine:
-            binding_idx = engine.get_binding_index(binding)
-            dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
-            shape = tuple(engine.get_binding_shape(binding_idx))
-            device = torch_device_from_trt(engine.get_location(binding_idx))
-            cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
-
-            bindings.append(int(cuda_mem.data_ptr()))
-            if engine.binding_is_input(binding):
-                cuda_inputs[binding] = cuda_mem
-            else:
-                cuda_outputs[binding] = cuda_mem
+        # cuda_inputs = {}
+        # cuda_outputs = {}
+        # bindings = []
+        #
+        # for binding in engine:
+        #     binding_idx = engine.get_binding_index(binding)
+        #     dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
+        #     shape = tuple(engine.get_binding_shape(binding_idx))
+        #     device = torch_device_from_trt(engine.get_location(binding_idx))
+        #     cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
+        #
+        #     bindings.append(int(cuda_mem.data_ptr()))
+        #     if engine.binding_is_input(binding):
+        #         cuda_inputs[binding] = cuda_mem
+        #     else:
+        #         cuda_outputs[binding] = cuda_mem
         # store
         self.stream = stream
         self.context = context
         self.engine = engine
 
-        self.cuda_inputs = cuda_inputs
-        self.cuda_outputs = cuda_outputs
-        self.bindings = bindings
+        # self.cuda_inputs = cuda_inputs
+        # self.cuda_outputs = cuda_outputs
+        # self.bindings = bindings
 
         self.box_coder = GroundBox3dCoderTorch()
 
     def infer(self, spatial_features):
         evaltime = EvalTime()
+
+        cuda_inputs = {}
+        cuda_outputs = {}
+        bindings = []
+
+        for binding in self.engine:
+            binding_idx = self.engine.get_binding_index(binding)
+            dtype = torch_dtype_from_trt(self.engine.get_binding_dtype(binding_idx))
+            shape = tuple(self.engine.get_binding_shape(binding_idx))
+            device = torch_device_from_trt(self.engine.get_location(binding_idx))
+            cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
+
+            bindings.append(int(cuda_mem.data_ptr()))
+            if self.engine.binding_is_input(binding):
+                cuda_inputs[binding] = cuda_mem
+            else:
+                cuda_outputs[binding] = cuda_mem
+
         self.ctx.push()
 
         evaltime("")
@@ -59,8 +79,8 @@ class PointPillarsPart2Inference:
         context = self.context
         engine = self.engine
 
-        cuda_inputs = self.cuda_inputs
-        bindings = self.bindings
+        # cuda_inputs = self.cuda_inputs
+        # bindings = self.bindings
 
         cuda_inputs['input'].copy_(spatial_features)
         evaltime("prep done")
@@ -68,12 +88,38 @@ class PointPillarsPart2Inference:
         evaltime("pointpillars part2 infer")
         stream.synchronize()
         self.ctx.pop()
+        return cuda_outputs
 
-    def predict(self, spatial_features, anchors, rect, Trv2c, P2, anchors_mask):
-        self.infer(spatial_features)
-        box_preds = self.cuda_outputs['box_preds'].clone()
-        cls_preds = self.cuda_outputs['cls_preds'].clone()
-        dir_cls_preds = self.cuda_outputs['dir_cls_preds'].clone()
+    def detect_3d_bbox(self, spatial_features, anchors, rect, Trv2c, P2, anchors_mask, width, height):
+        cuda_outputs = self.infer(spatial_features)
+        pred_dict = self.predict(cuda_outputs, anchors, rect, Trv2c, P2, anchors_mask)
+        score_thresh = 0.05
+        score = pred_dict[0]['scores']
+        keep = score > score_thresh
+        score = score[keep]
+        box3d = pred_dict[0]['box3d_camera']
+        box3d = box3d[:, [0, 1, 2, 4, 5, 3, 6]][keep]
+        box2d = pred_dict[0]['bbox'][keep]
+        labels = pred_dict[0]['label_preds'][keep] + 1
+        # imgid = dps['image_idx'][0].item()
+        # if 'width' in dps and 'height' in dps:
+        #     h, w = dps['height'], dps['width']
+        # else:
+        #     KITTIROOT = osp.expanduser('~/Datasets/kitti')
+        #     h, w, _ = load_image_info(KITTIROOT, 'training', imgid)
+        result = BoxList(box2d, (width, height))
+        box3d = Box3DList(box3d, "xyzhwl_ry")
+        result.add_field("box3d", box3d)
+        result.add_field("labels", labels)
+        result.add_field("scores", score)
+        # result.add_field("imgid", imgid)
+        output = {'left': result, 'right': result}
+        return output
+
+    def predict(self, cuda_outputs, anchors, rect, Trv2c, P2, anchors_mask):
+        box_preds = cuda_outputs['box_preds']
+        cls_preds = cuda_outputs['cls_preds']
+        dir_cls_preds = cuda_outputs['dir_cls_preds']
 
         batch_size = anchors.shape[0]
         batch_anchors = anchors.view(batch_size, -1, 7)
@@ -208,7 +254,8 @@ class PointPillarsPart2Inference:
                     # "image_idx": img_idx,
                 }
             predictions_dicts.append(predictions_dict)
+        return predictions_dicts
 
     def destory(self):
         self.ctx.pop()
-        del self.context
+        # del self.context

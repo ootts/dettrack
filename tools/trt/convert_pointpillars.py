@@ -1,7 +1,7 @@
 import os.path as osp
 import os
 from disprcnn.config import cfg
-
+import tensorrt as trt
 from disprcnn.engine.defaults import default_argument_parser
 from disprcnn.trainer.build import build_trainer
 from disprcnn.utils.comm import get_rank
@@ -79,12 +79,14 @@ def main():
 
     print('to engine')
     engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine")
-    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --saveEngine={engine_path}  --tacticSources=-cublasLt,+cublas"
+    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --tacticSources=-cublasLt,+cublas"
     if cfg.trt.convert_to_trt.fp16:
         cmd = cmd + " --fp16"
+        engine_path = engine_path.replace(".engine", "-fp16.engine")
+    cmd = cmd + f" --saveEngine={engine_path}"
     cmd = cmd + " --minShapes=voxels:100x100x4,num_points:100,coordinates:100x4" \
                 " --optShapes=voxels:1403x100x4,num_points:1403,coordinates:1403x4" \
-                " --maxShapes=voxels:3000x100x4,num_points:3000,coordinates:3000x4"
+                " --maxShapes=voxels:6000x100x4,num_points:6000,coordinates:6000x4"
     os.system(cmd)
 
 

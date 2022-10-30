@@ -75,8 +75,8 @@ def main():
     engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine")
     cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx}"
     if cfg.trt.convert_to_trt.fp16:
-        engine_path = engine_path.replace(".engine", "-fp16.engine")
         cmd = cmd + " --fp16"
+        engine_path = engine_path.replace(".engine", "-fp16.engine")
     cmd = cmd + " --minShapes=left_input:1x3x112x112,right_input:1x3x112x112" \
                 " --optShapes=left_input:4x3x112x112,right_input:4x3x112x112" \
                 " --maxShapes=left_input:20x3x112x112,right_input:20x3x112x112"

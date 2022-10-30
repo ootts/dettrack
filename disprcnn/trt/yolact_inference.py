@@ -23,62 +23,81 @@ class YolactInference:
         context = engine.create_execution_context()
 
         # prepare buffer
-        cuda_inputs = []
-        cuda_outputs = {}
-        bindings = []
-
-        for binding in engine:
-            binding_idx = engine.get_binding_index(binding)
-            dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
-            shape = tuple(engine.get_binding_shape(binding_idx))
-            device = torch_device_from_trt(engine.get_location(binding_idx))
-            cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
-
-            bindings.append(int(cuda_mem.data_ptr()))
-            if engine.binding_is_input(binding):
-                cuda_inputs.append(cuda_mem)
-            else:
-                cuda_outputs[binding] = cuda_mem
+        # cuda_inputs = []
+        # cuda_outputs = {}
+        # bindings = []
+        #
+        # for binding in engine:
+        #     binding_idx = engine.get_binding_index(binding)
+        #     dtype = torch_dtype_from_trt(engine.get_binding_dtype(binding_idx))
+        #     shape = tuple(engine.get_binding_shape(binding_idx))
+        #     device = torch_device_from_trt(engine.get_location(binding_idx))
+        #     cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
+        #
+        #     bindings.append(int(cuda_mem.data_ptr()))
+        #     if engine.binding_is_input(binding):
+        #         cuda_inputs.append(cuda_mem)
+        #     else:
+        #         cuda_outputs[binding] = cuda_mem
         # store
         self.stream = stream
         self.context = context
         self.engine = engine
 
-        self.cuda_inputs = cuda_inputs
-        self.cuda_outputs = cuda_outputs
-        self.bindings = bindings
+        # self.cuda_inputs = cuda_inputs
+        # self.cuda_outputs = cuda_outputs
+        # self.bindings = bindings
 
         self.detector = detector
 
     def infer(self, input_file1, input_file2):
         evaltime = EvalTime()
-        self.ctx.push()
+        cuda_inputs = []
+        cuda_outputs = {}
+        bindings = []
 
+        for binding in self.engine:
+            binding_idx = self.engine.get_binding_index(binding)
+            dtype = torch_dtype_from_trt(self.engine.get_binding_dtype(binding_idx))
+            shape = tuple(self.engine.get_binding_shape(binding_idx))
+            device = torch_device_from_trt(self.engine.get_location(binding_idx))
+            cuda_mem = torch.empty(size=shape, dtype=dtype, device=device)
+
+            bindings.append(int(cuda_mem.data_ptr()))
+            if self.engine.binding_is_input(binding):
+                cuda_inputs.append(cuda_mem)
+            else:
+                cuda_outputs[binding] = cuda_mem
+
+        self.ctx.push()
+        evaltime('prepare buffers')
         # restore
         stream = self.stream
         context = self.context
         engine = self.engine
 
         # host_inputs = self.host_inputs
-        cuda_inputs = self.cuda_inputs
+        # cuda_inputs = self.cuda_inputs
         # host_outputs = self.host_outputs
-        cuda_outputs = self.cuda_outputs
-        bindings = self.bindings
+        # cuda_outputs = self.cuda_outputs
+        # bindings = self.bindings
 
         img1 = self.preprocess(input_file1)
         img2 = self.preprocess(input_file2)
 
         input_image = torch.stack([img1, img2]).cuda()
         cuda_inputs[0].copy_(input_image)
-        evaltime('')
+        evaltime('preprocess')
         context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
         evaltime('yolact infer')
         stream.synchronize()
         self.ctx.pop()
 
+        return cuda_outputs
+
     def destory(self):
         self.ctx.pop()
-        del self.context
+        # del self.context
 
     def preprocess(self, input_file):
         image = cv2.imread(input_file)
@@ -98,13 +117,13 @@ class YolactInference:
         image = torch.from_numpy(image).float()
         return image
 
-    def postprocess(self):
-        loc = self.cuda_outputs['loc'].clone()
-        conf = self.cuda_outputs['conf'].clone()
-        mask = self.cuda_outputs['mask'].clone()
-        priors = self.cuda_outputs['priors'].clone()
-        proto = self.cuda_outputs['proto'].clone()
-        feat_out = self.cuda_outputs['feat_out'].clone()
+    def postprocess(self, cuda_outputs):
+        loc = cuda_outputs['loc']
+        conf = cuda_outputs['conf']
+        mask = cuda_outputs['mask']
+        priors = cuda_outputs['priors']
+        proto = cuda_outputs['proto']
+        feat_out = cuda_outputs['feat_out']
         rets = self.detector({'loc': loc, 'conf': conf, 'mask': mask, 'priors': priors, 'proto': proto})
         return rets, feat_out
 
@@ -131,9 +150,9 @@ class YolactInference:
 
     def detect(self, input_file1, input_file2):
         evaltime = EvalTime()
-        self.infer(input_file1, input_file2)
+        cuda_outputs = self.infer(input_file1, input_file2)
         evaltime('')
-        rets, feat_out = self.postprocess()
+        rets, feat_out = self.postprocess(cuda_outputs)
         evaltime('postprocess')
         left_rets, right_rets = [rets[0]], [rets[1]]
         left_feat, right_feat = feat_out[0:1], feat_out[1:]

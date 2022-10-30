@@ -1,4 +1,6 @@
-import imageio
+import os
+import tensorrt as trt
+import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import cv2
@@ -6,9 +8,6 @@ import pycuda.driver as cuda
 import pycuda.autoinit
 import os.path as osp
 import glob
-import os
-
-from PIL import Image
 from torchvision.ops import RoIAlign
 
 from disprcnn.data import make_data_loader
@@ -17,6 +16,8 @@ from disprcnn.engine.defaults import default_argument_parser
 from disprcnn.modeling.models.pointpillars.submodules import PointPillarsScatter
 from disprcnn.modeling.models.psmnet.inference import DisparityMapProcessor
 from disprcnn.modeling.models.yolact.layers import Detect
+from disprcnn.structures.bounding_box_3d import Box3DList
+from disprcnn.structures.boxlist_ops import boxlist_iou
 from disprcnn.structures.calib import Calib
 from disprcnn.trt.idispnet_inference import IDispnetInference
 from disprcnn.trt.pointpillars_part1_inference import PointPillarsPart1Inference
@@ -33,6 +34,7 @@ from disprcnn.utils.pytorch_ssim import ssim
 from disprcnn.utils.stereo_utils import expand_box_to_integer_torch
 from disprcnn.utils.timer import EvalTime
 from disprcnn.utils.utils_3d import matrix_3x4_to_4x4
+from disprcnn.utils.vis3d_ext import Vis3D
 
 
 class TotalInference:
@@ -42,6 +44,7 @@ class TotalInference:
         args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
         cfg = setup(args)
         self.cfg = cfg
+        self.dbg = True
 
         valid_ds = make_data_loader(cfg).dataset
 
@@ -52,41 +55,44 @@ class TotalInference:
         yolact_cfg = cfg.model.yolact
         detector = Detect(yolact_cfg, yolact_cfg.num_classes, bkg_label=0, top_k=yolact_cfg.nms_top_k,
                           conf_thresh=yolact_cfg.nms_conf_thresh, nms_thresh=yolact_cfg.nms_thresh)
+        postfix = ".engine"
+        if cfg.trt.convert_to_trt.fp16:
+            postfix = "-fp16" + postfix
 
-        self.yolact_inf = YolactInference(osp.join(cfg.trt.convert_to_trt.output_path, "yolact.engine"),
+        self.yolact_inf = YolactInference(osp.join(cfg.trt.convert_to_trt.output_path, f"yolact{postfix}"),
                                           detector)
 
         self.yolact_tracking_head_inf = YolactTrackingHeadInference(
-            osp.join(cfg.trt.convert_to_trt.output_path, "yolact_tracking_head.engine"))
+            osp.join(cfg.trt.convert_to_trt.output_path, f"yolact_tracking_head{postfix}"))
 
         self.idispnet_inf = IDispnetInference(
-            osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine"))
+            osp.join(cfg.trt.convert_to_trt.output_path, f"idispnet{postfix}"))
         self.roi_align = RoIAlign((112, 112), 1.0, 0)
 
-        # self.pointpillars_inf = PointPillarsPart1Inference(
-        #     osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine"))
-        #
-        # self.pointpillars_part2_inf = PointPillarsPart2Inference(
-        #     osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars_part2.engine"))
-        #
-        # self.voxel_generator = build_voxel_generator(self.cfg.voxel_generator)
-        # box_coder = GroundBox3dCoderTorch()
-        # self.target_assigner = build_target_assigner(self.cfg.model.pointpillars.target_assigner, box_coder)
-        # feature_map_size = [1, 248, 216]
-        # ret = self.target_assigner.generate_anchors(feature_map_size)  # [352, 400]
-        # anchors = torch.from_numpy(ret["anchors"]).cuda()
-        # anchors = anchors.reshape([-1, 7])
-        # matched_thresholds = torch.from_numpy(ret["matched_thresholds"]).cuda()
-        # unmatched_thresholds = torch.from_numpy(ret["unmatched_thresholds"]).cuda()
-        # anchors_bv = rbbox2d_to_near_bbox(anchors[:, [0, 1, 3, 4, 6]])
-        # self.anchor_cache = {
-        #     "anchors": anchors,
-        #     "anchors_bv": anchors_bv,
-        #     "matched_thresholds": matched_thresholds,
-        #     "unmatched_thresholds": unmatched_thresholds,
-        # }
-        # self.middle_feature_extractor = PointPillarsScatter(output_shape=[1, 1, 496, 432, 64],
-        #                                                     num_input_features=64)
+        self.pointpillars_inf = PointPillarsPart1Inference(
+            osp.join(cfg.trt.convert_to_trt.output_path, f"pointpillars{postfix}"))
+
+        self.pointpillars_part2_inf = PointPillarsPart2Inference(
+            osp.join(cfg.trt.convert_to_trt.output_path, f"pointpillars_part2{postfix}"))
+
+        self.voxel_generator = build_voxel_generator(self.cfg.voxel_generator)
+        box_coder = GroundBox3dCoderTorch()
+        self.target_assigner = build_target_assigner(self.cfg.model.pointpillars.target_assigner, box_coder)
+        feature_map_size = [1, 248, 216]
+        ret = self.target_assigner.generate_anchors(feature_map_size)  # [352, 400]
+        anchors = torch.from_numpy(ret["anchors"]).cuda()
+        anchors = anchors.reshape([-1, 7])
+        matched_thresholds = torch.from_numpy(ret["matched_thresholds"]).cuda()
+        unmatched_thresholds = torch.from_numpy(ret["unmatched_thresholds"]).cuda()
+        anchors_bv = rbbox2d_to_near_bbox(anchors[:, [0, 1, 3, 4, 6]])
+        self.anchor_cache = {
+            "anchors": anchors,
+            "anchors_bv": anchors_bv,
+            "matched_thresholds": matched_thresholds,
+            "unmatched_thresholds": unmatched_thresholds,
+        }
+        self.middle_feature_extractor = PointPillarsScatter(output_shape=[1, 1, 496, 432, 64],
+                                                            num_input_features=64)
 
     def infer(self, input_file1, input_file2):
         evaltime = EvalTime()
@@ -118,17 +124,35 @@ class TotalInference:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)
         evaltime('idispnet forward')
-        # pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
-        # self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
-        # voxel_features = self.pointpillars_inf.cuda_outputs['output'].clone()
-        # spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
-        #                                                  pp_input["anchors"].shape[0])
-        # pp_output = self.pointpillars_part2_inf.predict(spatial_features, pp_input['anchors'],
-        #                                                 pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
-        #                                                 pp_input['anchors_mask'])
-        print()
+        pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
+        cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
+        voxel_features = cuda_outputs['output']
+        spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
+                                                         pp_input["anchors"].shape[0])
+        pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
+                                                               pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
+                                                               pp_input['anchors_mask'], width, height)
+        if len(left_result) == 0:
+            box3d = Box3DList(torch.empty([0, 7]), "xyzhwl_ry")
+            left_result.add_field('box3d', box3d)
+        elif len(pp_output['left']) == 0:
+            box3d = Box3DList(torch.ones([0, 7], dtype=torch.float, device='cuda'), "xyzhwl_ry")
+            left_result.add_field('box3d', box3d)
+        else:
+            iou = boxlist_iou(left_result, pp_output['left'])
 
-    #     anchors, rect, Trv2c, P2, anchors_mask
+            maxiou, maxiouidx = iou.max(1)
+            keep = maxiou > 0.5
+            box3d = pp_output['left'].get_field('box3d')[maxiouidx]
+            left_result.add_field('box3d', box3d)
+            # masks = left_result.PixelWise_map['masks'].convert('mask')
+            # left_result.PixelWise_map['masks'] = masks
+            left_result = left_result[keep]
+            # left_result.PixelWise_map['masks'] = left_result.PixelWise_map['masks'].convert(
+            #     self.cfg.mask_mode)
+            right_result = right_result[keep]
+        if self.dbg:
+            self.vis_final_result(left_result, right_result, self.calib, original_left_img, original_right_img)
 
     def match_lp_rp(self, lp, rp, img2, img3):
         W, H = lp.size
@@ -294,6 +318,34 @@ class TotalInference:
         example['width'] = width
         example['height'] = height
         return example
+
+    def vis_final_result(self, left_result, right_result, calib, left_original_images, right_original_images):
+        vis3d = Vis3D(
+            xyz_pattern=('x', '-y', '-z'),
+            out_folder="dbg",
+            sequence="drcnn_vis_final_result_trt",
+            # auto_increase=False,
+            enable=self.dbg,
+        )
+        # target = dps['targets']['left'][0]
+        # calib = target.get_field('calib').calib
+        # if self.cfg.detector_3d_on:
+        dmp = DisparityMapProcessor()
+        disparity_map = dmp(left_result, right_result)
+        pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
+        vis3d.add_point_cloud(pts_rect)
+        vis3d.add_boxes(left_result.get_field('box3d').convert('corners').bbox_3d, name='pred')
+        # vis3d.add_boxes(target.get_field('box3d').convert('corners').bbox_3d, name='gt')
+        left_result.plot(left_original_images[0], show=False, calib=calib, ignore_2d_when_3d_exists=True,
+                         class_names=['Car'],
+                         draw_mask=False)
+        outpath = osp.join(vis3d.out_folder, vis3d.sequence_name, f'{vis3d.scene_id:05d}', 'images', 'left_result.png')
+        os.makedirs(osp.dirname(outpath))
+        plt.savefig(outpath)
+        outpath = osp.join(vis3d.out_folder, vis3d.sequence_name, f'{vis3d.scene_id:05d}', 'images', 'right_result.png')
+        right_result.plot(right_original_images[0], show=False)
+        plt.savefig(outpath)
+        print()
 
     def destroy(self):
         self.yolact_inf.destory()

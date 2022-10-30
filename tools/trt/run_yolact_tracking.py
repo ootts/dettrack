@@ -110,7 +110,9 @@ def main():
     ref_x = ref_x.numpy()
 
     engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "yolact_tracking_head.engine")
-
+    if cfg.trt.convert_to_trt.fp16:
+        engine_file = engine_file.replace(".engine", "-fp16.engine")
+        
     inferencer = Inference(engine_file)
 
     inferencer.infer(x, ref_x)

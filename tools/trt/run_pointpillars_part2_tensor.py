@@ -28,18 +28,19 @@ def main():
 
     spatial_features = torch.load('tmp/spatial_features.pth', 'cuda')
     engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars_part2.engine")
-
+    if cfg.trt.convert_to_trt.fp16:
+        engine_file = engine_file.replace(".engine", "-fp16.engine")
     inferencer = PointPillarsPart2Inference(engine_file)
 
-    inferencer.infer(spatial_features)
+    cuda_outputs = inferencer.infer(spatial_features)
     inferencer.destory()
 
     preds_dict = torch.load('tmp/preds_dict.pth', 'cuda')
     box_preds_r, cls_preds_r, dir_cls_preds_r = preds_dict['box_preds'], preds_dict['cls_preds'], preds_dict[
         'dir_cls_preds']
-    box_preds = inferencer.cuda_outputs['box_preds']
-    cls_preds = inferencer.cuda_outputs['cls_preds']
-    dir_cls_preds = inferencer.cuda_outputs['dir_cls_preds']
+    box_preds = cuda_outputs['box_preds']
+    cls_preds = cuda_outputs['cls_preds']
+    dir_cls_preds = cuda_outputs['dir_cls_preds']
     print((box_preds_r - box_preds).abs().max())
     print((cls_preds_r - cls_preds).abs().max())
     print((dir_cls_preds - dir_cls_preds).abs().max())

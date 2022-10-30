@@ -18,7 +18,9 @@ def main():
     left_roi_images, right_roi_images = torch.load('tmp/left_right_roi_images.pth', 'cuda')
 
     engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine")
-
+    if cfg.trt.convert_to_trt.fp16:
+        engine_file = engine_file.replace(".engine", "-fp16.engine")
+        
     inferencer = IDispnetInference(engine_file)
 
     pred_idisp = inferencer.predict_idisp(left_roi_images, right_roi_images)

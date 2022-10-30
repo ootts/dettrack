@@ -1,16 +1,11 @@
-import torch
+import tensorrt as trt
 import os.path as osp
-import cv2
+
 import numpy as np
 import pycuda.driver as cuda
-
 import pycuda.autoinit
-import tensorrt as trt
 
-from disprcnn.modeling.models.yolact.layers import Detect
-from disprcnn.modeling.models.yolact.layers.box_utils import decode
-from disprcnn.utils.timer import EvalTime
-from disprcnn.utils.trt_utils import bind_array_to_input, bind_array_to_output, load_engine
+from disprcnn.utils.trt_utils import load_engine
 
 
 class Inference:
@@ -104,12 +99,12 @@ class Inference:
 def main():
     from disprcnn.engine.defaults import setup
     from disprcnn.engine.defaults import default_argument_parser
-    from disprcnn.data import make_data_loader
+    import torch
+
     parser = default_argument_parser()
     args = parser.parse_args()
     args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
     cfg = setup(args)
-
     pp_input = torch.load('tmp/pp_input.pth', 'cpu')
     voxels = pp_input['voxels'].numpy()
     num_points = pp_input['num_points'].numpy()
@@ -117,6 +112,8 @@ def main():
     anchors = pp_input['anchors'].numpy()
 
     engine_file = osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine")
+    if cfg.trt.convert_to_trt.fp16:
+        engine_file = engine_file.replace(".engine", "-fp16.engine")
 
     inferencer = Inference(engine_file)
 

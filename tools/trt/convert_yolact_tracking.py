@@ -73,9 +73,11 @@ def main():
 
     print('to engine')
     engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "yolact_tracking_head.engine")
-    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --saveEngine={engine_path}  --tacticSources=-cublasLt,+cublas"
+    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx} --workspace=40960 --tacticSources=-cublasLt,+cublas"
     if cfg.trt.convert_to_trt.fp16:
         cmd = cmd + " --fp16"
+        engine_path = engine_path.replace(".engine", "-fp16.engine")
+    cmd = cmd + f" --saveEngine={engine_path}"
     cmd = cmd + " --minShapes=x:1x256x7x7,ref_x:1x256x7x7" \
                 " --optShapes=x:10x256x7x7,ref_x:10x256x7x7" \
                 " --maxShapes=x:200x256x7x7,ref_x:200x256x7x7"

@@ -1,5 +1,7 @@
 import os.path as osp
 import os
+import sys
+
 from disprcnn.config import cfg
 import tensorrt as trt
 from disprcnn.engine.defaults import default_argument_parser
@@ -75,7 +77,8 @@ def main():
                       },
                       verbose=False)
     simp_onnx = output_onnx.replace('.onnx', '-simp.onnx')
-    os.system(f"/home/linghao/anaconda3/envs/pt110/bin/onnxsim {output_onnx} {simp_onnx}")
+    onnxsim_path = sys.executable.replace("/bin/python", "/bin/onnxsim")
+    os.system(f"{onnxsim_path} {output_onnx} {simp_onnx}")
 
     print('to engine')
     engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "pointpillars.engine")

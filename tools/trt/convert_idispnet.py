@@ -73,7 +73,8 @@ def main():
 
     print('to engine')
     engine_path = osp.join(cfg.trt.convert_to_trt.output_path, "idispnet.engine")
-    cmd = f"~/Downloads/TensorRT-8.4.1.5/bin/trtexec --onnx={simp_onnx}"
+    trtexec_path = osp.expanduser(cfg.trt.convert_to_trt.trtexec_path)
+    cmd = f"{trtexec_path} --onnx={simp_onnx}"
     if cfg.trt.convert_to_trt.fp16:
         cmd = cmd + " --fp16"
         engine_path = engine_path.replace(".engine", "-fp16.engine")

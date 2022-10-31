@@ -292,6 +292,7 @@ _C.trt.convert_to_trt = CN()
 _C.trt.convert_to_trt.fp16 = False
 # _C.trt.convert_to_trt.tactic_sources = "cublasLt,+cubla"
 _C.trt.convert_to_trt.output_path = ""
+_C.trt.convert_to_trt.trtexec_path = "~/Downloads/TensorRT-8.4.1.5/bin/trtexec"
 
 _C.dataset = CN()
 

@@ -4,6 +4,8 @@ from torch.autograd import Variable
 import numpy as np
 from math import exp
 
+from disprcnn.utils.timer import EvalTime
+
 
 def gaussian(window_size, sigma):
     gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
@@ -47,8 +49,10 @@ class SSIM(torch.nn.Module):
         self.size_average = size_average
         self.channel = 1
         self.window = create_window(window_size, self.channel)
+        self.evaltime = EvalTime()
 
     def forward(self, img1, img2):
+        self.evaltime("")
         (_, channel, _, _) = img1.size()
 
         if channel == self.channel and self.window.data.type() == img1.data.type():
@@ -63,7 +67,13 @@ class SSIM(torch.nn.Module):
             self.window = window
             self.channel = channel
 
-        return _ssim(img1, img2, window, self.window_size, channel, self.size_average)
+        result = _ssim(img1, img2, window, self.window_size, channel, self.size_average)
+        self.evaltime("ssim computation")
+        return result
+
+    def cuda(self, device=None):
+        self.window = self.window.cuda(device)
+        return self
 
 
 def ssim(img1, img2, window_size=11, size_average=True):

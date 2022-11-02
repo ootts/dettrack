@@ -30,7 +30,7 @@ from disprcnn.utils.ppp_utils.box_np_ops import sparse_sum_for_anchors_mask, fus
     rbbox2d_to_near_bbox
 from disprcnn.utils.ppp_utils.target_assigner import build_target_assigner
 from disprcnn.utils.ppp_utils.voxel_generator import build_voxel_generator
-from disprcnn.utils.pytorch_ssim import ssim
+from disprcnn.utils.pytorch_ssim import ssim, SSIM
 from disprcnn.utils.stereo_utils import expand_box_to_integer_torch
 from disprcnn.utils.timer import EvalTime
 from disprcnn.utils.utils_3d import matrix_3x4_to_4x4
@@ -95,6 +95,7 @@ class TotalInference:
         self.middle_feature_extractor = PointPillarsScatter(output_shape=[1, 1, 496, 432, 64],
                                                             num_input_features=64)
         self.evaltime = EvalTime()
+        self.ssim = SSIM().cuda()
 
     def infer(self, input_file1, input_file2):
 
@@ -126,71 +127,99 @@ class TotalInference:
         else:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)
-        # evaltime('idispnet:forward')
-        self.evaltime("")
-        pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
-        self.evaltime('pointpillars:prepare input')
-        cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
-        self.evaltime('pointpillars:infer')
-        voxel_features = cuda_outputs['output']
-        spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
-                                                         pp_input["anchors"].shape[0])
-        self.evaltime('pointpillars:middle_feature_extractor')
-        pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
-                                                               pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
-                                                               pp_input['anchors_mask'], width, height)
-        # evaltime('pointpillars part2:detect_3d_bbox')
-        self.evaltime("")
-        if len(left_result) == 0:
-            box3d = Box3DList(torch.empty([0, 7]), "xyzhwl_ry")
-            left_result.add_field('box3d', box3d)
-        elif len(pp_output['left']) == 0:
-            box3d = Box3DList(torch.ones([0, 7], dtype=torch.float, device='cuda'), "xyzhwl_ry")
-            left_result.add_field('box3d', box3d)
-        else:
-            iou = boxlist_iou(left_result, pp_output['left'])
-
-            maxiou, maxiouidx = iou.max(1)
-            keep = maxiou > 0.5
-            box3d = pp_output['left'].get_field('box3d')[maxiouidx]
-            left_result.add_field('box3d', box3d)
-            # masks = left_result.PixelWise_map['masks'].convert('mask')
-            # left_result.PixelWise_map['masks'] = masks
-            left_result = left_result[keep]
-            # left_result.PixelWise_map['masks'] = left_result.PixelWise_map['masks'].convert(
-            #     self.cfg.mask_mode)
-            right_result = right_result[keep]
-        self.evaltime("pipeline: postprocess")
-        if self.dbg:
-            self.vis_final_result(left_result, right_result, self.calib, original_left_img, original_right_img)
+        # self.evaltime("")
+        # pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
+        # self.evaltime('pointpillars:prepare input')
+        # cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
+        # self.evaltime('pointpillars:infer')
+        # voxel_features = cuda_outputs['output']
+        # spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
+        #                                                  pp_input["anchors"].shape[0])
+        # self.evaltime('pointpillars:middle_feature_extractor')
+        # pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
+        #                                                        pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
+        #                                                        pp_input['anchors_mask'], width, height)
+        # self.evaltime("")
+        # if len(left_result) == 0:
+        #     box3d = Box3DList(torch.empty([0, 7]), "xyzhwl_ry")
+        #     left_result.add_field('box3d', box3d)
+        # elif len(pp_output['left']) == 0:
+        #     box3d = Box3DList(torch.ones([0, 7], dtype=torch.float, device='cuda'), "xyzhwl_ry")
+        #     left_result.add_field('box3d', box3d)
+        # else:
+        #     iou = boxlist_iou(left_result, pp_output['left'])
+        #
+        #     maxiou, maxiouidx = iou.max(1)
+        #     keep = maxiou > 0.5
+        #     box3d = pp_output['left'].get_field('box3d')[maxiouidx]
+        #     left_result.add_field('box3d', box3d)
+        #     # masks = left_result.PixelWise_map['masks'].convert('mask')
+        #     # left_result.PixelWise_map['masks'] = masks
+        #     left_result = left_result[keep]
+        #     # left_result.PixelWise_map['masks'] = left_result.PixelWise_map['masks'].convert(
+        #     #     self.cfg.mask_mode)
+        #     right_result = right_result[keep]
+        # self.evaltime("pipeline: postprocess")
+        # if self.dbg:
+        #     self.vis_final_result(left_result, right_result, self.calib, original_left_img, original_right_img)
 
     def match_lp_rp(self, lp, rp, img2, img3):
+        self.evaltime("")
         W, H = lp.size
-        lboxes = lp.bbox.round().long().tolist()
-        rboxes = rp.bbox.round().long().tolist()
+        lboxes = lp.bbox.round().long()
+        rboxes = rp.bbox.round().long()
         ssims = torch.zeros((len(lboxes), len(rboxes)))
-        for i in range(len(lboxes)):
+        ssim_coef = self.cfg.model.drcnn.ssim_coefs[0]
+        ssim_intercept = self.cfg.model.drcnn.ssim_intercepts[0]
+        ssim_std = self.cfg.model.drcnn.ssim_stds[0]
+        M, N = lboxes.shape[0], rboxes.shape[0]
+        lboxes_exp = lboxes.unsqueeze(1).repeat(1, N, 1)
+        rboxes_exp = rboxes.unsqueeze(0).repeat(M, 1, 1)
+        hmeans = (lboxes_exp[:, :, 3] - lboxes_exp[:, :, 1] + rboxes_exp[:, :, 3] - rboxes_exp[:, :, 1]) / 2
+        center_disp_expectations = hmeans * ssim_coef + ssim_intercept
+        cds = (lboxes_exp[:, :, 0] + lboxes_exp[:, :, 2] - rboxes_exp[:, :, 0] - rboxes_exp[:, :, 2]) / 2
+        valid = (cds - center_disp_expectations).abs() < 3 * ssim_std
+        nzs = valid.nonzero()
+        lrois, rrois = [], []
+        sls, srs = lboxes[nzs[:, 0]], rboxes[nzs[:, 1]]
+        w = torch.max(sls[:, 2] - sls[:, 0], srs[:, 2] - srs[:, 0])
+        h = torch.max(sls[:, 3] - sls[:, 1], srs[:, 3] - srs[:, 1])
+        ws = torch.min(torch.min(w, W - sls[:, 0]), W - srs[:, 0])
+        hs = torch.min(torch.min(h, H - sls[:, 1]), H - srs[:, 1])
+        self.evaltime("match_lr: prepare")
+        for nz, w, h in zip(nzs, ws, hs):
+            i, j = nz
             x1, y1, x2, y2 = lboxes[i]
-            ssim_coef = self.cfg.model.drcnn.ssim_coefs[0]
-            ssim_intercept = self.cfg.model.drcnn.ssim_intercepts[0]
-            ssim_std = self.cfg.model.drcnn.ssim_stds[0]
-            for j in range(len(rboxes)):
-                x1p, y1p, x2p, y2p = rboxes[j]
-                # adaptive thresh
-                hmean = (y2 - y1 + y2p - y1p) / 2
-                center_disp_expectation = hmean * ssim_coef + ssim_intercept
-                cd = (x1 + x2 - x1p - x2p) / 2
-                if abs(cd - center_disp_expectation) < 3 * ssim_std:
-                    w = max(x2 - x1, x2p - x1p)
-                    h = max(y2 - y1, y2p - y1p)
-                    w = min(min(w, W - x1, ), W - x1p)
-                    h = min(min(h, H - y1, ), H - y1p)
-                    lroi = img2[y1:y1 + h, x1:x1 + w, :].permute(2, 0, 1)[None] / 255.0
-                    rroi = img3[y1p:y1p + h, x1p:x1p + w, :].permute(2, 0, 1)[None] / 255.0
-                    s = ssim(lroi, rroi)
-                else:
-                    s = -10
-                ssims[i, j] = s
+            x1p, y1p, x2p, y2p = rboxes[j]
+            lroi = img2[y1:y1 + h, x1:x1 + w, :].permute(2, 0, 1)[None] / 255.0
+            rroi = img3[y1p:y1p + h, x1p:x1p + w, :].permute(2, 0, 1)[None] / 255.0
+            lrois.append(lroi)
+            rrois.append(rroi)
+        self.evaltime("match_lr: crop loop")
+        for nz, lroi, rroi in zip(nzs, lrois, rrois):
+            i, j = nz
+            s = self.ssim(lroi, rroi)
+            ssims[i, j] = s
+        # for i in range(len(lboxes)):
+        #     x1, y1, x2, y2 = lboxes[i]
+        #     for j in range(len(rboxes)):
+        #         x1p, y1p, x2p, y2p = rboxes[j]
+        #         # adaptive thresh
+        #         hmean = (y2 - y1 + y2p - y1p) / 2
+        #         center_disp_expectation = hmean * ssim_coef + ssim_intercept
+        #         cd = (x1 + x2 - x1p - x2p) / 2
+        #         if abs(cd - center_disp_expectation) < 3 * ssim_std:
+        #             w = max(x2 - x1, x2p - x1p)
+        #             h = max(y2 - y1, y2p - y1p)
+        #             w = min(min(w, W - x1, ), W - x1p)
+        #             h = min(min(h, H - y1, ), H - y1p)
+        #             lroi = img2[y1:y1 + h, x1:x1 + w, :].permute(2, 0, 1)[None] / 255.0
+        #             rroi = img3[y1p:y1p + h, x1p:x1p + w, :].permute(2, 0, 1)[None] / 255.0
+        #             s = self.ssim(lroi, rroi)
+        #         else:
+        #             s = -10
+        #         ssims[i, j] = s
+        self.evaltime("match_lr: for loop")
         if len(lboxes) <= len(rboxes):
             num = ssims.shape[0]
         else:
@@ -206,6 +235,7 @@ class TotalInference:
             ssims[:, col] = ssims[:, col].clamp(max=0)
         lp = lp[lidx]
         rp = rp[ridx]
+        self.evaltime("match_lr: ready to return")
         return lp, rp
 
     def prepare_idispnet_input(self, original_left_image, original_right_image,

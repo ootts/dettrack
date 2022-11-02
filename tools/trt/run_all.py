@@ -127,41 +127,41 @@ class TotalInference:
         else:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)
-        # self.evaltime("")
-        # pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
-        # self.evaltime('pointpillars:prepare input')
-        # cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
-        # self.evaltime('pointpillars:infer')
-        # voxel_features = cuda_outputs['output']
-        # spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
-        #                                                  pp_input["anchors"].shape[0])
-        # self.evaltime('pointpillars:middle_feature_extractor')
-        # pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
-        #                                                        pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
-        #                                                        pp_input['anchors_mask'], width, height)
-        # self.evaltime("")
-        # if len(left_result) == 0:
-        #     box3d = Box3DList(torch.empty([0, 7]), "xyzhwl_ry")
-        #     left_result.add_field('box3d', box3d)
-        # elif len(pp_output['left']) == 0:
-        #     box3d = Box3DList(torch.ones([0, 7], dtype=torch.float, device='cuda'), "xyzhwl_ry")
-        #     left_result.add_field('box3d', box3d)
-        # else:
-        #     iou = boxlist_iou(left_result, pp_output['left'])
-        #
-        #     maxiou, maxiouidx = iou.max(1)
-        #     keep = maxiou > 0.5
-        #     box3d = pp_output['left'].get_field('box3d')[maxiouidx]
-        #     left_result.add_field('box3d', box3d)
-        #     # masks = left_result.PixelWise_map['masks'].convert('mask')
-        #     # left_result.PixelWise_map['masks'] = masks
-        #     left_result = left_result[keep]
-        #     # left_result.PixelWise_map['masks'] = left_result.PixelWise_map['masks'].convert(
-        #     #     self.cfg.mask_mode)
-        #     right_result = right_result[keep]
-        # self.evaltime("pipeline: postprocess")
-        # if self.dbg:
-        #     self.vis_final_result(left_result, right_result, self.calib, original_left_img, original_right_img)
+        self.evaltime("")
+        pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
+        self.evaltime('pointpillars:prepare input')
+        cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
+        self.evaltime('pointpillars:infer')
+        voxel_features = cuda_outputs['output']
+        spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
+                                                         pp_input["anchors"].shape[0])
+        self.evaltime('pointpillars:middle_feature_extractor')
+        pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
+                                                               pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
+                                                               pp_input['anchors_mask'], width, height)
+        self.evaltime("")
+        if len(left_result) == 0:
+            box3d = Box3DList(torch.empty([0, 7]), "xyzhwl_ry")
+            left_result.add_field('box3d', box3d)
+        elif len(pp_output['left']) == 0:
+            box3d = Box3DList(torch.ones([0, 7], dtype=torch.float, device='cuda'), "xyzhwl_ry")
+            left_result.add_field('box3d', box3d)
+        else:
+            iou = boxlist_iou(left_result, pp_output['left'])
+
+            maxiou, maxiouidx = iou.max(1)
+            keep = maxiou > 0.5
+            box3d = pp_output['left'].get_field('box3d')[maxiouidx]
+            left_result.add_field('box3d', box3d)
+            # masks = left_result.PixelWise_map['masks'].convert('mask')
+            # left_result.PixelWise_map['masks'] = masks
+            left_result = left_result[keep]
+            # left_result.PixelWise_map['masks'] = left_result.PixelWise_map['masks'].convert(
+            #     self.cfg.mask_mode)
+            right_result = right_result[keep]
+        self.evaltime("pipeline: postprocess")
+        if self.dbg:
+            self.vis_final_result(left_result, right_result, self.calib, original_left_img, original_right_img)
 
     def match_lp_rp(self, lp, rp, img2, img3):
         self.evaltime("")

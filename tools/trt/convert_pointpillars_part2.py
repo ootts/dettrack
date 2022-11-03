@@ -77,7 +77,7 @@ def main():
     if cfg.trt.convert_to_trt.fp16:
         cmd = cmd + " --fp16"
         engine_path = engine_path.replace(".engine", "-fp16.engine")
-        cmd = cmd + f" --saveEngine={engine_path}"
+    cmd = cmd + f" --saveEngine={engine_path}"
     # cmd = cmd + " --minShapes=voxels:100x100x4,num_points:100,coordinates:100x4" \
     #             " --optShapes=voxels:1403x100x4,num_points:1403,coordinates:1403x4" \
     #             " --maxShapes=voxels:3000x100x4,num_points:3000,coordinates:3000x4"

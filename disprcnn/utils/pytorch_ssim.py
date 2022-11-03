@@ -49,10 +49,10 @@ class SSIM(torch.nn.Module):
         self.size_average = size_average
         self.channel = 1
         self.window = create_window(window_size, self.channel)
-        self.evaltime = EvalTime()
+        # self.evaltime = EvalTime()
 
     def forward(self, img1, img2):
-        self.evaltime("")
+        # self.evaltime("")
         (_, channel, _, _) = img1.size()
 
         if channel == self.channel and self.window.data.type() == img1.data.type():
@@ -68,7 +68,7 @@ class SSIM(torch.nn.Module):
             self.channel = channel
 
         result = _ssim(img1, img2, window, self.window_size, channel, self.size_average)
-        self.evaltime("ssim computation")
+        # self.evaltime("ssim computation")
         return result
 
     def cuda(self, device=None):

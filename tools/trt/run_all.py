@@ -44,7 +44,7 @@ class TotalInference:
         args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
         cfg = setup(args)
         self.cfg = cfg
-        self.dbg = False
+        self.dbg = True
 
         valid_ds = make_data_loader(cfg).dataset
 

@@ -63,10 +63,39 @@ tensorboard --logdir models/drcnn/kitti_tracking/pointpillars_112_demo/evaltime/
 
 
 
-## TensorRT
+## Inference with TensorRT
 
 ### Requirements
 
-GPU sm>=70
+GPU sm>=70, such as GTX 2080.
 
-https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar
+Ubuntu 16.04 or later
+
+cuda 10.2
+
+cudnn 8.4.1 [install](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
+
+tensorRT [install](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar)
+
+onnxeruntime, onnxsim (install using pip)
+
+### Run
+
+1. Convert pytorch model to xxx.onnx.
+   Since tensorRT can not deal with the entire model, we select some parts from the model and convert them one by one.
+
+   ```bash
+   sh tools/trt/convert.sh # see this script for detailed commands.
+   ```
+
+2. Simplify xxx.onnx.
+   Use "onnxsim" to simplify xxx.onnx. This step has been included in Step1.
+
+3. Convert xxx.onnx to xxx.engine.
+   Use "trtexec" to perform the conversion. This step has been included in Step1.
+
+4. Load xxx.engine for inference.
+   After converting all models, run "tools/trt/run_all.py" to load engines and perform inference. The running time will be evaluated.
+
+5. NOTE: See configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml and modify "trt.convert_to_trt.fp16" to enable or disable fp16. Enabling fp16 usually further speeds up the running speed, while losing a little numerical precision.
+

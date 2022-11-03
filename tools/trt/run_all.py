@@ -164,7 +164,7 @@ class TotalInference:
             self.vis_final_result(left_result, right_result, self.calib, original_left_img, original_right_img)
 
     def match_lp_rp(self, lp, rp, img2, img3):
-        self.evaltime("")
+        # self.evaltime("")
         W, H = lp.size
         lboxes = lp.bbox.round().long()
         rboxes = rp.bbox.round().long()
@@ -186,7 +186,7 @@ class TotalInference:
         h = torch.max(sls[:, 3] - sls[:, 1], srs[:, 3] - srs[:, 1])
         ws = torch.min(torch.min(w, W - sls[:, 0]), W - srs[:, 0])
         hs = torch.min(torch.min(h, H - sls[:, 1]), H - srs[:, 1])
-        self.evaltime("match_lr: prepare")
+        # self.evaltime("match_lr: prepare")
         for nz, w, h in zip(nzs, ws, hs):
             i, j = nz
             x1, y1, x2, y2 = lboxes[i]
@@ -195,7 +195,7 @@ class TotalInference:
             rroi = img3[y1p:y1p + h, x1p:x1p + w, :].permute(2, 0, 1)[None] / 255.0
             lrois.append(lroi)
             rrois.append(rroi)
-        self.evaltime("match_lr: crop loop")
+        # self.evaltime("match_lr: crop loop")
         for nz, lroi, rroi in zip(nzs, lrois, rrois):
             i, j = nz
             s = self.ssim(lroi, rroi)
@@ -219,7 +219,7 @@ class TotalInference:
         #         else:
         #             s = -10
         #         ssims[i, j] = s
-        self.evaltime("match_lr: for loop")
+        # self.evaltime("match_lr: for loop")
         if len(lboxes) <= len(rboxes):
             num = ssims.shape[0]
         else:
@@ -235,7 +235,7 @@ class TotalInference:
             ssims[:, col] = ssims[:, col].clamp(max=0)
         lp = lp[lidx]
         rp = rp[ridx]
-        self.evaltime("match_lr: ready to return")
+        # self.evaltime("match_lr: ready to return")
         return lp, rp
 
     def prepare_idispnet_input(self, original_left_image, original_right_image,
@@ -295,18 +295,18 @@ class TotalInference:
         return im
 
     def prepare_pointpillars_input(self, left_result, right_result, width, height):
-        evaltime = self.evaltime
-        evaltime('')
+        # evaltime = self.evaltime
+        # evaltime('')
         dmp = DisparityMapProcessor()
         voxel_generator = self.voxel_generator
         disparity_map = dmp(left_result, right_result)
-        evaltime('dmp')
+        # evaltime('dmp')
         calib = self.calib2
         pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
         keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
                (pts_rect[:, 1] > -3) & (pts_rect[:, 1] < 3) \
                & (pts_rect[:, 2] > 0) & (pts_rect[:, 2] < 80)
-        evaltime('to points')
+        # evaltime('to points')
         pts_rect = pts_rect[keep]
         points = calib.rect_to_lidar(pts_rect)
         rect = torch.eye(4).cuda().float()
@@ -317,7 +317,7 @@ class TotalInference:
         voxel_size = voxel_generator.voxel_size
         pc_range = voxel_generator.point_cloud_range
         grid_size = voxel_generator.grid_size
-        evaltime('points cat')
+        # evaltime('points cat')
 
         p = to_array(points)
         voxels, coordinates, num_points = voxel_generator.generate(p,
@@ -334,7 +334,7 @@ class TotalInference:
             'Trv2c': Trv2c[None],
             'P2': to_tensor(matrix_3x4_to_4x4(calib.P2), torch.float, 'cuda')[None],
         }
-        evaltime('init example')
+        # evaltime('init example')
         anchor_cache = self.anchor_cache
         anchors = anchor_cache["anchors"]
         anchors_bv = anchor_cache["anchors_bv"]
@@ -353,7 +353,7 @@ class TotalInference:
         example['calib'] = calib
         example['width'] = width
         example['height'] = height
-        evaltime('return example')
+        # evaltime('return example')
         return example
 
     def vis_final_result(self, left_result, right_result, calib, left_original_images, right_original_images):

@@ -6,7 +6,7 @@ import pycuda.driver as cuda
 
 import pycuda.autoinit
 import tensorrt as trt
-from torch.fx.experimental.fx2trt import torch_dtype_from_trt
+from disprcnn.utils.trt_utils import torch_dtype_from_trt
 
 from disprcnn.modeling.models.yolact.layers import Detect
 from disprcnn.modeling.models.yolact.layers.box_utils import decode

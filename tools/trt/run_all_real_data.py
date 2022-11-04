@@ -53,8 +53,8 @@ def main():
     inference = TotalInference(raw_dir)
 
     for i in range(len(input_file1s)):
-        if int(input_file1s[i][:-4][-6:]) >= 7865:
-            inference.infer(input_file1s[i], input_file2s[i])
+        # if int(input_file1s[i][:-4][-6:]) >= 7865: # uncomment to skip images without cars.
+        inference.infer(input_file1s[i], input_file2s[i])
 
     inference.destroy()
 

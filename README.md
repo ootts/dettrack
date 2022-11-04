@@ -79,7 +79,7 @@ tensorRT [install](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/i
 
 onnxeruntime, onnxsim (install using pip)
 
-### Run
+### Run on KITTI
 
 1. Convert pytorch model to xxx.onnx.
    Since tensorRT can not deal with the entire model, we select some parts from the model and convert them one by one.
@@ -98,4 +98,31 @@ onnxeruntime, onnxsim (install using pip)
    After converting all models, run "tools/trt/run_all.py" to load engines and perform inference. The running time will be evaluated.
 
 5. NOTE: See configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml and modify "trt.convert_to_trt.fp16" to enable or disable fp16. Enabling fp16 usually further speeds up the running speed, while losing a little numerical precision.
+
+### Run on real data
+
+1. Data preparation
+   ```bash
+   dettrack/ # project root
+   ├─ data
+   │  ├─ real
+   │  │  ├─ calib.txt
+   │  │  ├─ left
+   │  │  ├─ right
+   │  │  ├─ cam0_small.yaml
+   │  │  ├─ cam1_small.yaml
+   │  │  ├─ stereo.yaml
+   ```
+
+2. Run inference
+   ```bash
+   # Run without visualization
+   python tools/trt/run_all_real_data.py
+   # Run with visualization
+   python tools/trt/run_all_real_data.py dbg True
+   ```
+
+   
+
+
 

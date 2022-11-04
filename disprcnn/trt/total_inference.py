@@ -1,13 +1,18 @@
 import os
+
+import imageio
 import tensorrt as trt
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import cv2
 import pycuda.driver as cuda
-import pycuda.autoinit
+# import pycuda.autoinit
 import os.path as osp
 import glob
+
+import yaml
+from PIL import Image
 from torchvision.ops import RoIAlign
 
 from disprcnn.data import make_data_loader
@@ -37,21 +42,85 @@ from disprcnn.utils.utils_3d import matrix_3x4_to_4x4
 from disprcnn.utils.vis3d_ext import Vis3D
 
 
+def read_calib(raw_dir):
+    from dl_ext.vision_ext.datasets.kitti.structures import Calibration
+    with open(osp.join(raw_dir, "calib.txt")) as f:
+        lines = f.readlines()
+    calibs = {}
+    for line in lines:
+        k = line.split()[0]
+        nums = list(map(float, line.split()[1:]))
+        if len(nums) == 12:
+            nums = torch.tensor(nums).reshape(3, 4).float()
+        elif len(nums) == 9:
+            nums = torch.tensor(nums).reshape(3, 3).float()
+        else:
+            raise RuntimeError()
+        if k == 'R_rect':
+            k = 'R0_rect'
+        elif k == 'Tr_velo_cam':
+            k = 'Tr_velo_to_cam'
+        elif k == 'Tr_imu_velo':
+            k = 'Tr_imu_to_velo'
+        k = k.strip(":")
+        calibs[k] = nums.numpy()
+    img = Image.open(glob.glob(osp.join("data/real/left/*png"))[0])
+    calib = Calibration(calibs, [img.width, img.height])
+    return calib
+
+
+def load_cam_attrs(cam_path):
+    resize_factor = 2.0
+    cam_attrs = yaml.full_load(open(cam_path))
+    camera_matrix = np.array(
+        [[cam_attrs['projection_parameters']['fx'] * resize_factor, 0,
+          cam_attrs['projection_parameters']['cx'] * resize_factor],
+         [0, cam_attrs['projection_parameters']['fy'] * resize_factor,
+          cam_attrs['projection_parameters']['cy'] * resize_factor],
+         [0, 0, 1]])
+    dist_coeffs = np.array([cam_attrs['distortion_parameters']['k1'],
+                            cam_attrs['distortion_parameters']['k2'],
+                            cam_attrs['distortion_parameters']['p1'],
+                            cam_attrs['distortion_parameters']['p2'],
+                            0])
+    return camera_matrix, dist_coeffs
+
+
+def prepare_stereo_rectify(raw_dir):
+    # raw_dir = "data/real/"
+    left_path = sorted(glob.glob(osp.join(raw_dir, "left/*.png")))[0]
+
+    left = imageio.imread(left_path)
+    H, W = left.shape
+    left_K, left_dist = load_cam_attrs(osp.join(raw_dir, "cam0_small.yaml"))
+    right_K, right_dist = load_cam_attrs(osp.join(raw_dir, "cam1_small.yaml"))
+
+    R2 = np.array([9.9999e-01, 1.3479e-04, 4.7469e-03, 1.2004e-01,
+                   -1.2457e-04, 1, -2.1531e-03, -7.4797e-04,
+                   -4.7472e-03, 2.1524e-03, 9.9999e-01, 5.4342e-04,
+                   0, 0, 0, 1]).reshape(4, 4)
+    R2 = np.linalg.inv(R2)
+    R1, R2, P1, P2, Q, validPixROI1, validPixROI2 = cv2.stereoRectify(left_K, left_dist, right_K, right_dist,
+                                                                      (W, H), R2[:3, :3], R2[:3, 3],
+                                                                      flags=cv2.CALIB_ZERO_DISPARITY)
+    map1x, map1y = cv2.initUndistortRectifyMap(left_K, left_dist, R1, P1, (W, H), cv2.CV_32FC1)
+    map2x, map2y = cv2.initUndistortRectifyMap(right_K, right_dist, R2, P2, (W, H), cv2.CV_32FC1)
+
+    return P1, P2, map1x, map1y, map2x, map2y
+
+
 class TotalInference:
-    def __init__(self):
+    def __init__(self, raw_dir):
         parser = default_argument_parser()
         args = parser.parse_args()
-        args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_demo.yaml'
+        args.config_file = 'configs/drcnn/kitti_tracking/pointpillars_112_600x300_real_demo.yaml'
         cfg = setup(args)
         self.cfg = cfg
-        self.dbg = True
+        self.dbg = cfg.dbg
 
-        valid_ds = make_data_loader(cfg).dataset
-
-        data0 = valid_ds[0]
-        calib = data0['targets']['left'].extra_fields['calib']
-        self.calib = calib
-        self.calib2 = Calib(calib, (calib.width, calib.height), 'cuda')
+        calib = read_calib(raw_dir)
+        # self.calib = Calib(calib)
+        self.calib = Calib(calib, (calib.width, calib.height), 'cuda')
 
         yolact_cfg = cfg.model.yolact
         detector = Detect(yolact_cfg, yolact_cfg.num_classes, bkg_label=0, top_k=yolact_cfg.nms_top_k,
@@ -96,12 +165,27 @@ class TotalInference:
                                                             num_input_features=64)
         self.evaltime = EvalTime()
         self.ssim = SSIM().cuda()
+        self.stereo_rectify_params = prepare_stereo_rectify(raw_dir)  # P1, P2, map1x, map1y, map2x, map2y
+
+    def stereo_rectify(self, input_file1, input_file2):
+        left = imageio.imread(input_file1)
+        P1, P2, map1x, map1y, map2x, map2y = self.stereo_rectify_params
+        right = imageio.imread(input_file2)
+        left_remap = cv2.remap(left, map1x, map1y,
+                               interpolation=cv2.INTER_NEAREST,
+                               borderMode=cv2.BORDER_CONSTANT,
+                               borderValue=(0, 0, 0, 0))
+        right_remap = cv2.remap(right, map2x, map2y,
+                                interpolation=cv2.INTER_NEAREST,
+                                borderMode=cv2.BORDER_CONSTANT,
+                                borderValue=(0, 0, 0, 0))
+        return left_remap, right_remap
 
     def infer(self, input_file1, input_file2):
-
-        left = cv2.cvtColor(cv2.imread(input_file1), cv2.COLOR_BGR2GRAY)
+        left, right = self.stereo_rectify(input_file1, input_file2)
+        # left = cv2.cvtColor(cv2.imread(input_file1), cv2.COLOR_BGR2GRAY)
         left = np.repeat(left[:, :, None], 3, axis=2)
-        right = cv2.cvtColor(cv2.imread(input_file2), cv2.COLOR_BGR2GRAY)
+        # right = cv2.cvtColor(cv2.imread(input_file2), cv2.COLOR_BGR2GRAY)
         right = np.repeat(right[:, :, None], 3, axis=2)
         height, width, _ = left.shape
         original_left_img = torch.from_numpy(left).cuda()[None]
@@ -110,14 +194,15 @@ class TotalInference:
         left_preds, right_preds, left_feat, right_feat = self.yolact_inf.detect(input_file1, input_file2)
         # evaltime('yolact:detect')
 
-        left_pred, right_pred = self.yolact_tracking_head_inf.track(
+        left_result, right_result = self.yolact_tracking_head_inf.track(
             left_preds, left_feat, right_preds, right_feat, width, height)
         # evaltime('track')
         self.evaltime("")
-        left_result, right_result = self.match_lp_rp(left_pred, right_pred,
-                                                     original_left_img[0],
-                                                     original_right_img[0])
-        self.evaltime('match lr')
+        if len(left_result) > 0 or len(right_result) > 0:
+            left_result, right_result = self.match_lp_rp(left_result, right_result,
+                                                         original_left_img[0],
+                                                         original_right_img[0])
+            self.evaltime('match lr')
         idispnet_prep = self.prepare_idispnet_input(original_left_img, original_right_img,
                                                     left_result, right_result)
         left_roi_images, right_roi_images, fxus, x1s, x1ps, x2s, x2ps = idispnet_prep
@@ -127,20 +212,26 @@ class TotalInference:
         else:
             disp_output = torch.zeros((0, 112, 112)).cuda()
         left_result.add_field('disparity', disp_output)
+        if len(left_result) > 0:
+            self.evaltime("")
+            pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
+            self.evaltime('pointpillars:prepare input')
+            if pp_input['voxels'].shape[0] > 0:
+                cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'],
+                                                           pp_input['coordinates'])
+                self.evaltime('pointpillars:infer')
+                voxel_features = cuda_outputs['output']
+                spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
+                                                                 pp_input["anchors"].shape[0])
+                self.evaltime('pointpillars:middle_feature_extractor')
+                pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
+                                                                       pp_input['rect'], pp_input['Trv2c'],
+                                                                       pp_input['P2'],
+                                                                       pp_input['anchors_mask'], width, height)
+            else:
+                pp_output = None
         self.evaltime("")
-        pp_input = self.prepare_pointpillars_input(left_result, right_result, width, height)
-        self.evaltime('pointpillars:prepare input')
-        cuda_outputs = self.pointpillars_inf.infer(pp_input['voxels'], pp_input['num_points'], pp_input['coordinates'])
-        self.evaltime('pointpillars:infer')
-        voxel_features = cuda_outputs['output']
-        spatial_features = self.middle_feature_extractor(voxel_features, pp_input['coordinates'],
-                                                         pp_input["anchors"].shape[0])
-        self.evaltime('pointpillars:middle_feature_extractor')
-        pp_output = self.pointpillars_part2_inf.detect_3d_bbox(spatial_features, pp_input['anchors'],
-                                                               pp_input['rect'], pp_input['Trv2c'], pp_input['P2'],
-                                                               pp_input['anchors_mask'], width, height)
-        self.evaltime("")
-        if len(left_result) == 0:
+        if len(left_result) == 0 or pp_output is None:
             box3d = Box3DList(torch.empty([0, 7]), "xyzhwl_ry")
             left_result.add_field('box3d', box3d)
         elif len(pp_output['left']) == 0:
@@ -254,10 +345,11 @@ class TotalInference:
             x1ps.append(rightbox[0])
             x2s.append(leftbox[2])
             x2ps.append(rightbox[2])
-
-        left_roi_images = self.crop_and_transform_roi_img(img_left.permute(2, 0, 1)[None], torch.stack(rois_left))
-        right_roi_images = self.crop_and_transform_roi_img(img_right.permute(2, 0, 1)[None], torch.stack(rois_right))
-        if len(left_roi_images) != 0:
+        if len(rois_left) > 0:
+            left_roi_images = self.crop_and_transform_roi_img(img_left.permute(2, 0, 1)[None], torch.stack(rois_left))
+            right_roi_images = self.crop_and_transform_roi_img(img_right.permute(2, 0, 1)[None],
+                                                               torch.stack(rois_right))
+            # if len(left_roi_images) != 0:
             x1s = torch.stack(x1s)
             x1ps = torch.stack(x1ps)
             x2s = torch.stack(x2s)
@@ -281,7 +373,7 @@ class TotalInference:
         voxel_generator = self.voxel_generator
         disparity_map = dmp(left_result, right_result)
         # evaltime('dmp')
-        calib = self.calib2
+        calib = self.calib
         pts_rect, _, _ = calib.disparity_map_to_rect(disparity_map.data)
         keep = (pts_rect[:, 0] > -20) & (pts_rect[:, 0] < 20) & \
                (pts_rect[:, 1] > -3) & (pts_rect[:, 1] < 3) \
@@ -366,22 +458,3 @@ class TotalInference:
 
     def destroy(self):
         self.yolact_inf.destory()
-
-
-def main():
-    data2_dir = "data/kitti/tracking/training/image_02/0001/"
-    data3_dir = "data/kitti/tracking/training/image_03/0001/"
-    input_file1s = sorted(glob.glob(osp.join(data2_dir, "*.png")))
-    input_file2s = sorted(glob.glob(osp.join(data3_dir, "*.png")))
-    assert len(input_file1s) == len(input_file2s)
-
-    inference = TotalInference()
-
-    for i in range(len(input_file1s)):
-        inference.infer(input_file1s[i], input_file2s[i])
-
-    inference.destroy()
-
-
-if __name__ == '__main__':
-    main()

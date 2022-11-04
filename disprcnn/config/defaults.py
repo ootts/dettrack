@@ -286,11 +286,8 @@ _C.model.drcnn.nvis = 10
 
 _C.trt = CN()
 _C.trt.onnx_path = ""
-# _C.trt.do_simplify = True
 _C.trt.convert_to_trt = CN()
-# _C.trt.convert_to_trt.enable = True
 _C.trt.convert_to_trt.fp16 = False
-# _C.trt.convert_to_trt.tactic_sources = "cublasLt,+cubla"
 _C.trt.convert_to_trt.output_path = ""
 _C.trt.convert_to_trt.trtexec_path = "~/Downloads/TensorRT-8.4.1.5/bin/trtexec"
 

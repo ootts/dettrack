@@ -30,6 +30,11 @@ model:
   pointpillars:
     num_point_features: 4
     pretrained_model: "models/pointpillars/disprcnn_112/train/model_epoch_000040.pth"
+trt:
+  onnx_path: "tmp"
+  convert_to_trt:
+    fp16: True
+    output_path: "tmp"
 datasets:
   train: ("realtrackingstereo_demo",)
   test: "realtrackingstereo_demo"

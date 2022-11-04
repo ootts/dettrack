@@ -255,7 +255,7 @@ class BoxList(object):
         return bbox
 
     def __getitem__(self, item):
-        if isinstance(item, list) and isinstance(item[0], torch.Tensor):
+        if isinstance(item, list) and len(item) > 0 and isinstance(item[0], torch.Tensor):
             item = [i.item() for i in item]  # compat to onnx
         bbox = BoxList(self.bbox[item], self.size, self.mode)
         # bbox._copy_map(self)

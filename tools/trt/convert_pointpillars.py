@@ -88,7 +88,7 @@ def main():
         cmd = cmd + " --fp16"
         engine_path = engine_path.replace(".engine", "-fp16.engine")
     cmd = cmd + f" --saveEngine={engine_path}"
-    cmd = cmd + " --minShapes=voxels:100x100x4,num_points:100,coordinates:100x4" \
+    cmd = cmd + " --minShapes=voxels:10x100x4,num_points:10,coordinates:10x4" \
                 " --optShapes=voxels:1403x100x4,num_points:1403,coordinates:1403x4" \
                 " --maxShapes=voxels:6000x100x4,num_points:6000,coordinates:6000x4"
     os.system(cmd)

@@ -122,7 +122,5 @@ onnxeruntime, onnxsim (install using pip)
    python tools/trt/run_all_real_data.py dbg True
    ```
 
-   
-
-
+3. For now, the tensorRT inference code has some bugs, you will see some Cuda Runtime errors when the program exits. Although it has no effect on the results, it may influence the running with visualization, where the results of the last frame cannot be shown in vis3d.
 
